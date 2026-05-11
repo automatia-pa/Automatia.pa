@@ -174,6 +174,7 @@ def extraer_texto(ruta_archivo):
 
 # ─────────────────────────────────────────
 def llamar_ia(texto):
+    texto_limpio = texto[:17000].replace('"', "'").replace('\\', '/')
     prompt = f"""
 Eres un experto contable. Extrae los datos de esta factura.
 Responde UNICAMENTE con un JSON valido, sin texto adicional.
@@ -190,7 +191,7 @@ Responde UNICAMENTE con un JSON valido, sin texto adicional.
 }}
 
 TEXTO DE LA FACTURA:
-{texto[:17000].replace('"', "'").replace('\\', '/')}
+{texto_limpio}
 """
     for model in MODELOS:
         try:
