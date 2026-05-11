@@ -1,0 +1,7 @@
+.env 
+*.db 
+clientes/ 
+__pycache__/ 
+*.pyc 
+procesamiento.log 
+.env 

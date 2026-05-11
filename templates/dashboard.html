@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutomatIA — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #060910; --surface: #0d1117; --surface2: #121820; --border: rgba(255,255,255,0.07); --accent: #00E5C3; --accent2: #3B82F6; --accent3: #F59E0B; --text: #F0F4FF; --muted: #7A8FAD; --error: #F87171; --success: #34D399; }
+  body { background: var(--bg); color: var(--text); font-family: "DM Sans", sans-serif; min-height: 100vh; }
+
+  /* NAV */
+  nav { background: rgba(6,9,16,0.9); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .logo { font-family: "Syne", sans-serif; font-size: 1.3rem; font-weight: 800; color: var(--text); text-decoration: none; }
+  .logo span { color: var(--accent); }
+  .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+  .user-badge { background: rgba(0,229,195,0.08); border: 1px solid rgba(0,229,195,0.15); border-radius: 100px; padding: 0.35rem 0.9rem; font-size: 0.82rem; color: var(--accent); }
+  .logout-btn { color: var(--muted); text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+  .logout-btn:hover { color: var(--text); }
+
+  /* LAYOUT */
+  .container { max-width: 1200px; margin: 0 auto; padding: 2.5rem 2rem; }
+
+  /* FLASH */
+  .flash { padding: 0.75rem 1rem; border-radius: 10px; font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .flash.danger { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: var(--error); }
+  .flash.success { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); color: var(--success); }
+  .flash.warning { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); color: var(--accent3); }
+
+  /* HEADER */
+  .page-header { margin-bottom: 2rem; }
+  .page-header h1 { font-family: "Syne", sans-serif; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
+  .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+
+  /* METRICS */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; }
+  .metric-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
+  .metric-value { font-family: "Syne", sans-serif; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
+  .metric-value.green { color: var(--accent); }
+  .metric-value.blue { color: var(--accent2); }
+  .metric-value.amber { color: var(--accent3); }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1.5rem; }
+  .chart-card.wide { grid-column: span 2; }
+  .chart-title { font-family: "Syne", sans-serif; font-size: 0.95rem; font-weight: 700; margin-bottom: 0.25rem; }
+  .chart-sub { font-size: 0.78rem; color: var(--muted); margin-bottom: 1.25rem; }
+  .chart-wrap { position: relative; height: 220px; }
+  .chart-wrap.tall { height: 260px; }
+  .badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 100px; font-size: 0.7rem; font-weight: 600; }
+  .badge.high { background: rgba(0,229,195,0.1); color: var(--accent); }
+  .badge.mid { background: rgba(245,158,11,0.1); color: var(--accent3); }
+  .badge.low { background: rgba(248,113,113,0.1); color: var(--error); }
+
+  /* UPLOAD */
+  .upload-section { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2rem; margin-bottom: 2rem; }
+  .upload-section h2 { font-family: "Syne", sans-serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 1.25rem; }
+  .upload-zone { border: 2px dashed rgba(0,229,195,0.25); border-radius: 14px; padding: 2.5rem; text-align: center; transition: border-color 0.2s, background 0.2s; cursor: pointer; position: relative; }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: rgba(0,229,195,0.5); background: rgba(0,229,195,0.03); }
+  .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+  .upload-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+  .upload-zone p { color: var(--muted); font-size: 0.9rem; }
+  .upload-zone span { color: var(--accent); font-weight: 500; }
+  .upload-zone small { display: block; margin-top: 0.4rem; font-size: 0.75rem; color: var(--muted); }
+  .file-list { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .file-item { background: rgba(0,229,195,0.05); border: 1px solid rgba(0,229,195,0.15); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.82rem; color: var(--accent); display: flex; align-items: center; gap: 0.5rem; }
+  .upload-btn { background: var(--accent); color: #030F0D; border: none; border-radius: 100px; padding: 0.75rem 2rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 1rem; font-family: "DM Sans", sans-serif; transition: opacity 0.2s; display: none; }
+  .upload-btn:hover { opacity: 0.9; }
+
+  /* TABLE */
+  .table-section { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+  .table-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .table-header h2 { font-family: "Syne", sans-serif; font-size: 1rem; font-weight: 700; }
+  .download-btn { background: transparent; border: 1px solid rgba(0,229,195,0.3); color: var(--accent); border-radius: 100px; padding: 0.4rem 1rem; font-size: 0.8rem; font-weight: 500; text-decoration: none; transition: background 0.2s; }
+  .download-btn:hover { background: rgba(0,229,195,0.08); }
+  .empty-state { padding: 4rem 2rem; text-align: center; color: var(--muted); }
+  .empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+  .empty-state p { font-size: 0.9rem; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--surface2); }
+  th { padding: 0.75rem 1rem; text-align: left; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
+  td { padding: 0.85rem 1rem; border-top: 1px solid var(--border); font-size: 0.85rem; color: var(--muted); }
+  tr:hover td { background: rgba(255,255,255,0.01); }
+  .td-proveedor { color: var(--text); font-weight: 500; }
+  .td-monto { color: var(--accent); font-weight: 600; }
+  .conf-wrap { display: flex; align-items: center; gap: 0.5rem; }
+  .conf-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; width: 50px; overflow: hidden; flex-shrink: 0; }
+  .conf-fill { height: 100%; border-radius: 2px; }
+  .conf-fill.high { background: var(--accent); }
+  .conf-fill.mid { background: var(--accent3); }
+  .conf-fill.low { background: var(--error); }
+
+  @media (max-width: 768px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    table { font-size: 0.78rem; }
+    th, td { padding: 0.6rem 0.75rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">Automat<span>IA</span></a>
+  <div class="nav-right">
+    <span class="user-badge">{{ user.nombre }}</span>
+    <a href="/logout" class="logout-btn">Cerrar sesion</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="page-header">
+    <h1>Bienvenido, {{ user.nombre }}</h1>
+    <p>Aqui puedes subir tus facturas y ver el estado de procesamiento en tiempo real.</p>
+  </div>
+
+  <!-- METRICAS -->
+  {% set total = facturas | length %}
+  {% set monto = facturas | sum(attribute='Monto_Total') if facturas else 0 %}
+  {% set confianza = (facturas | sum(attribute='Confianza') / total) if total > 0 else 0 %}
+  {% set proveedores = facturas | map(attribute='Proveedor') | unique | list | length if facturas else 0 %}
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="metric-label">Total Facturas</div>
+      <div class="metric-value">{{ total }}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Monto Total</div>
+      <div class="metric-value green">${{ "{:,.2f}".format(monto) }}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Confianza Promedio</div>
+      <div class="metric-value blue">{{ "{:.1f}".format(confianza) }}%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Proveedores</div>
+      <div class="metric-value amber">{{ proveedores }}</div>
+    </div>
+  </div>
+
+  <!-- GRAFICAS -->
+  {% if facturas %}
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title">Gasto por Proveedor</div>
+      <div class="chart-sub">Top proveedores segun monto total facturado</div>
+      <div class="chart-wrap"><canvas id="chartProveedores"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Distribucion por Moneda</div>
+      <div class="chart-sub">Proporcion de facturas segun moneda</div>
+      <div class="chart-wrap"><canvas id="chartMoneda"></canvas></div>
+    </div>
+    <div class="chart-card wide">
+      <div class="chart-title">Evolucion de Gastos Acumulados</div>
+      <div class="chart-sub">Monto acumulado por orden de procesamiento</div>
+      <div class="chart-wrap tall"><canvas id="chartTendencia"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Nivel de Confianza IA</div>
+      <div class="chart-sub">Distribucion por precision de extraccion</div>
+      <div class="chart-wrap"><canvas id="chartConfianza"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Cantidad por Proveedor</div>
+      <div class="chart-sub">Numero de facturas por cada proveedor</div>
+      <div class="chart-wrap"><canvas id="chartCantidad"></canvas></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- UPLOAD -->
+  <div class="upload-section">
+    <h2>Subir Facturas</h2>
+    <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
+      <div class="upload-zone" id="dropZone">
+        <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls" id="fileInput">
+        <div class="upload-icon">&#128196;</div>
+        <p>Arrastra tus facturas aqui o <span>selecciona archivos</span></p>
+        <small>PDF, TXT, XLSX &mdash; hasta 20MB por archivo</small>
+      </div>
+      <div class="file-list" id="fileList"></div>
+      <button type="submit" class="upload-btn" id="uploadBtn">Procesar facturas</button>
+    </form>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-section">
+    <div class="table-header">
+      <h2>Facturas Procesadas</h2>
+      {% if facturas %}
+        <a href="/download-excel" class="download-btn">Descargar Excel</a>
+      {% endif %}
+    </div>
+
+    {% if not facturas %}
+      <div class="empty-state">
+        <div class="empty-icon">&#128196;</div>
+        <p>Aun no tienes facturas procesadas. Sube tu primera factura arriba.</p>
+      </div>
+    {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>Archivo</th>
+            <th>Proveedor</th>
+            <th>RUC</th>
+            <th>Fecha</th>
+            <th>Monto</th>
+            <th>Moneda</th>
+            <th>Confianza</th>
+            <th>Descripcion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in facturas %}
+          <tr>
+            <td>{{ f.get('Archivo', '') }}</td>
+            <td class="td-proveedor">{{ f.get('Proveedor', '') }}</td>
+            <td>{{ f.get('RUC', '') }}</td>
+            <td>{{ f.get('Fecha', '') }}</td>
+            <td class="td-monto">${{ "{:,.2f}".format(f.get('Monto_Total', 0) or 0) }}</td>
+            <td>{{ f.get('Moneda', '') }}</td>
+            <td>
+              {% set conf = f.get('Confianza', 0) or 0 %}
+              <div class="conf-wrap">
+                <div class="conf-bar">
+                  <div class="conf-fill {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}"
+                       style="width:{{ conf }}%"></div>
+                </div>
+                <span class="badge {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}">{{ conf }}%</span>
+              </div>
+            </td>
+            <td>{{ f.get('Descripcion', '')[:60] }}{% if f.get('Descripcion', '') | length > 60 %}...{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  const input = document.getElementById('fileInput');
+  const fileList = document.getElementById('fileList');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const dropZone = document.getElementById('dropZone');
+
+  input.addEventListener('change', () => showFiles(input.files));
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    input.files = e.dataTransfer.files;
+    showFiles(e.dataTransfer.files);
+  });
+
+  function showFiles(files) {
+    fileList.innerHTML = '';
+    if (files.length === 0) { uploadBtn.style.display = 'none'; return; }
+    Array.from(files).forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'file-item';
+      el.innerHTML = '&#128196; ' + f.name + ' <span style="margin-left:auto;opacity:0.6;">' + (f.size / 1024).toFixed(1) + ' KB</span>';
+      fileList.appendChild(el);
+    });
+    uploadBtn.style.display = 'block';
+  }
+</script>
+{% if facturas %}
+<script>
+const facturas = {{ facturas | tojson }};
+const COLORS = ['#00E5C3','#3B82F6','#F59E0B','#A78BFA','#F87171','#34D399','#60A5FA','#FBBF24'];
+const gridColor = 'rgba(255,255,255,0.05)';
+Chart.defaults.color = '#7A8FAD';
+Chart.defaults.borderColor = gridColor;
+Chart.defaults.font.family = '"DM Sans", sans-serif';
+
+// 1. Gasto por proveedor
+const gastoMap = {};
+facturas.forEach(f => { const p = f.Proveedor || 'Desconocido'; gastoMap[p] = (gastoMap[p]||0) + (f.Monto_Total||0); });
+const gastoSorted = Object.entries(gastoMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
+new Chart(document.getElementById('chartProveedores'), {
+  type:'bar',
+  data:{ labels: gastoSorted.map(e=>e[0].length>18?e[0].substring(0,18)+'...':e[0]), datasets:[{ data:gastoSorted.map(e=>e[1]), backgroundColor:COLORS, borderRadius:8, borderSkipped:false }] },
+  options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:gridColor}, ticks:{callback:v=>'$'+v.toLocaleString()}}, y:{grid:{display:false}} } }
+});
+
+// 2. Distribucion por moneda
+const monedaMap = {};
+facturas.forEach(f => { const m = f.Moneda||'N/A'; monedaMap[m]=(monedaMap[m]||0)+1; });
+new Chart(document.getElementById('chartMoneda'), {
+  type:'doughnut',
+  data:{ labels:Object.keys(monedaMap), datasets:[{ data:Object.values(monedaMap), backgroundColor:COLORS, borderWidth:2, borderColor:'#0d1117', hoverOffset:8 }] },
+  options:{ responsive:true, maintainAspectRatio:false, cutout:'65%', plugins:{legend:{position:'right', labels:{padding:14, usePointStyle:true}}} }
+});
+
+// 3. Evolucion acumulada
+let acum = 0;
+const sorted = [...facturas].sort((a,b)=>new Date(a.Fecha_Procesado||0)-new Date(b.Fecha_Procesado||0));
+const tendLabels = sorted.map((f,i)=>f.Archivo?(f.Archivo.replace(/\.[^.]+$/,'').substring(0,12)):'F'+(i+1));
+const tendData = sorted.map(f=>{ acum+=(f.Monto_Total||0); return acum; });
+new Chart(document.getElementById('chartTendencia'), {
+  type:'line',
+  data:{ labels:tendLabels, datasets:[{ label:'Acumulado', data:tendData, borderColor:'#00E5C3', backgroundColor:'rgba(0,229,195,0.08)', fill:true, tension:0.4, pointBackgroundColor:'#00E5C3', pointRadius:4, pointHoverRadius:7 }] },
+  options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{maxRotation:30}}, y:{grid:{color:gridColor}, ticks:{callback:v=>'$'+v.toLocaleString()}} } }
+});
+
+// 4. Confianza por rangos
+const confRanges = {'Alta 90-100%':0,'Buena 75-89%':0,'Media 60-74%':0,'Baja <60%':0};
+facturas.forEach(f=>{ const c=f.Confianza||0; if(c>=90)confRanges['Alta 90-100%']++; else if(c>=75)confRanges['Buena 75-89%']++; else if(c>=60)confRanges['Media 60-74%']++; else confRanges['Baja <60%']++; });
+new Chart(document.getElementById('chartConfianza'), {
+  type:'bar',
+  data:{ labels:Object.keys(confRanges), datasets:[{ data:Object.values(confRanges), backgroundColor:['#00E5C3','#3B82F6','#F59E0B','#F87171'], borderRadius:8, borderSkipped:false }] },
+  options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}}, y:{grid:{color:gridColor}, ticks:{stepSize:1}} } }
+});
+
+// 5. Cantidad por proveedor
+const cantMap = {};
+facturas.forEach(f=>{ const p=f.Proveedor||'Desconocido'; cantMap[p]=(cantMap[p]||0)+1; });
+const cantSorted = Object.entries(cantMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+new Chart(document.getElementById('chartCantidad'), {
+  type:'doughnut',
+  data:{ labels:cantSorted.map(e=>e[0].length>16?e[0].substring(0,16)+'...':e[0]), datasets:[{ data:cantSorted.map(e=>e[1]), backgroundColor:COLORS, borderWidth:2, borderColor:'#0d1117', hoverOffset:8 }] },
+  options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{position:'right', labels:{padding:14, usePointStyle:true}}} }
+});
+</script>
+{% endif %}
+</body>
+</html>
