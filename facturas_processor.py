@@ -9,22 +9,22 @@ import logging
 import time
 import shutil
 from datetime import datetime
- 
+
 import PyPDF2
 import pandas as pd
 from dotenv import load_dotenv
- 
+
 load_dotenv()
- 
+
 # ─────────────────────────────────────────
 # CONFIGURACION
 # ─────────────────────────────────────────
 API_KEY          = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
- 
+
 CARPETA_CLIENTES = "./clientes"
- 
+
 # Modelos ordenados del más confiable al menos confiable
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
@@ -32,17 +32,17 @@ MODELOS = [
     "qwen/qwen3-coder:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
 ]
- 
+
 # Campos obligatorios que debe tener el JSON para considerarse válido
 CAMPOS_OBLIGATORIOS = ["proveedor", "monto_total", "moneda"]
- 
+
 logging.basicConfig(
     filename="procesamiento.log",
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
     encoding='utf-8'
 )
- 
+
 # ─────────────────────────────────────────
 def enviar_telegram(mensaje):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -58,7 +58,7 @@ def enviar_telegram(mensaje):
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:
         logging.error(f"Telegram error: {e}")
- 
+
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
     base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientes", nombre_cliente)
@@ -70,12 +70,12 @@ def get_rutas_cliente(nombre_cliente):
         "db":         os.path.join(base, "facturas.db"),
         "excel":      os.path.join(base, "resultados.xlsx"),
     }
- 
+
 def crear_carpetas_cliente(rutas):
     os.makedirs(rutas["facturas"],   exist_ok=True)
     os.makedirs(rutas["procesados"], exist_ok=True)
     os.makedirs(rutas["error"],      exist_ok=True)
- 
+
 def listar_clientes():
     if not os.path.exists(CARPETA_CLIENTES):
         os.makedirs(CARPETA_CLIENTES)
@@ -84,8 +84,21 @@ def listar_clientes():
         f for f in os.listdir(CARPETA_CLIENTES)
         if os.path.isdir(os.path.join(CARPETA_CLIENTES, f))
     ]
- 
+
 # ─────────────────────────────────────────
+CATEGORIAS_VALIDAS = [
+    "Servicios",
+    "Materiales y Suministros",
+    "Transporte y Logistica",
+    "Tecnologia y Software",
+    "Nomina y RRHH",
+    "Alquiler e Inmuebles",
+    "Publicidad y Marketing",
+    "Impuestos y Tasas",
+    "Alimentacion",
+    "Otros",
+]
+
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
     conn.execute('''
@@ -99,15 +112,22 @@ def init_db(db_path):
             monto_total REAL,
             moneda TEXT,
             descripcion TEXT,
+            categoria TEXT DEFAULT "Otros",
             confianza INTEGER DEFAULT 70,
             modelo_usado TEXT,
             notas TEXT,
             fecha_procesamiento TEXT
         )
     ''')
+    # Agregar columna categoria si no existe (para bases de datos ya creadas)
+    try:
+        conn.execute('ALTER TABLE facturas ADD COLUMN categoria TEXT DEFAULT "Otros"')
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # La columna ya existe
     conn.commit()
     conn.close()
- 
+
 # ─────────────────────────────────────────
 def exportar_excel(db_path, excel_path):
     try:
@@ -120,6 +140,7 @@ def exportar_excel(db_path, excel_path):
                 fecha as Fecha,
                 monto_total as Monto_Total,
                 moneda as Moneda,
+                categoria as Categoria,
                 descripcion as Descripcion,
                 confianza as Confianza,
                 modelo_usado as Modelo,
@@ -133,12 +154,12 @@ def exportar_excel(db_path, excel_path):
     except Exception as e:
         logging.error(f"Error Excel: {e}")
         return 0
- 
+
 # ─────────────────────────────────────────
 def get_file_hash(ruta):
     with open(ruta, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
- 
+
 def mover_archivo(ruta_origen, carpeta_destino):
     nombre = os.path.basename(ruta_origen)
     for _ in range(6):
@@ -150,7 +171,7 @@ def mover_archivo(ruta_origen, carpeta_destino):
         except:
             return False
     return False
- 
+
 # ─────────────────────────────────────────
 def extraer_texto(ruta_archivo):
     ext = os.path.splitext(ruta_archivo)[1].lower()
@@ -171,7 +192,7 @@ def extraer_texto(ruta_archivo):
     except Exception as e:
         logging.error(f"Error leyendo {ruta_archivo}: {e}")
     return None
- 
+
 # ─────────────────────────────────────────
 def validar_resultado(datos):
     """Verifica que el JSON tenga los campos mínimos necesarios"""
@@ -188,7 +209,7 @@ def validar_resultado(datos):
         logging.warning(f"monto_total no es un numero valido: {datos.get('monto_total')}")
         return False
     return True
- 
+
 def parsear_json_respuesta(content):
     """Intenta extraer y parsear el JSON de la respuesta de la IA"""
     # Limpiar bloques de código markdown
@@ -199,21 +220,21 @@ def parsear_json_respuesta(content):
             if "{" in parte:
                 content = parte
                 break
- 
+
     # Extraer solo el JSON
     inicio = content.find("{")
     fin = content.rfind("}") + 1
     if inicio == -1 or fin <= inicio:
         return None
- 
+
     content = content[inicio:fin]
     return json.loads(content)
- 
+
 # ─────────────────────────────────────────
 def llamar_ia(texto):
     texto_limpio = texto[:15000].replace('"', "'")
     texto_limpio = texto_limpio.replace('\\', '/')
- 
+
     prompt = (
         "Eres un asistente contable experto en facturas de Panama y Latinoamerica.\n"
         "Analiza el siguiente texto de una factura y extrae los datos.\n\n"
@@ -223,32 +244,37 @@ def llamar_ia(texto):
         "- Si no encuentras un campo, usa null\n"
         "- monto_total debe ser un numero, no texto\n"
         "- fecha debe estar en formato DD/MM/AAAA\n"
-        "- moneda: usa USD, PAB, o la que corresponda\n\n"
+        "- moneda: usa USD, PAB, o la que corresponda\n"
+        "- categoria debe ser UNA de estas opciones exactas: "
+        "Servicios, Materiales y Suministros, Transporte y Logistica, "
+        "Tecnologia y Software, Nomina y RRHH, Alquiler e Inmuebles, "
+        "Publicidad y Marketing, Impuestos y Tasas, Alimentacion, Otros\n\n"
         "FORMATO EXACTO DE RESPUESTA:\n"
         '{"proveedor": "nombre empresa", "ruc": "numero ruc o null", '
         '"fecha": "DD/MM/AAAA o null", "monto_total": 0.00, '
-        '"moneda": "USD", "descripcion": "descripcion breve", '
+        '"moneda": "USD", "categoria": "Servicios", '
+        '"descripcion": "descripcion breve", '
         '"confianza": 85, "notas": "observaciones o null"}\n\n'
         "TEXTO DE LA FACTURA:\n"
         + texto_limpio
     )
- 
+
     for i, model in enumerate(MODELOS):
         try:
             nombre = model.split('/')[1].split(':')[0]
             print(f"   Probando {nombre}...", end=" ", flush=True)
- 
+
             # Pausa entre modelos para evitar rate limiting
             if i > 0:
                 time.sleep(2)
- 
+
             data = {
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
                 "max_tokens": 500
             }
- 
+
             req = urllib.request.Request(
                 url="https://openrouter.ai/api/v1/chat/completions",
                 data=json.dumps(data).encode("utf-8"),
@@ -260,38 +286,38 @@ def llamar_ia(texto):
                 },
                 method="POST"
             )
- 
+
             with urllib.request.urlopen(req, timeout=45) as resp:
                 result = json.loads(resp.read().decode())
- 
+
                 # Verificar que la respuesta tiene el formato esperado
                 if "choices" not in result or not result["choices"]:
                     print(f"respuesta vacia")
                     logging.warning(f"{nombre}: respuesta sin choices")
                     continue
- 
+
                 content = result["choices"][0]["message"]["content"].strip()
- 
+
                 if not content:
                     print("contenido vacio")
                     continue
- 
+
                 datos = parsear_json_respuesta(content)
- 
+
                 if datos is None:
                     print("JSON invalido")
                     logging.warning(f"{nombre}: no se pudo parsear JSON. Respuesta: {content[:200]}")
                     continue
- 
+
                 if not validar_resultado(datos):
                     print("campos incompletos")
                     logging.warning(f"{nombre}: campos obligatorios faltantes. Datos: {datos}")
                     continue
- 
+
                 print(f"OK (confianza: {datos.get('confianza', '?')}%)")
                 logging.info(f"Factura procesada con {nombre}")
                 return datos, nombre
- 
+
         except urllib.error.HTTPError as e:
             print(f"HTTP {e.code}")
             logging.warning(f"{nombre}: HTTP error {e.code}")
@@ -308,19 +334,24 @@ def llamar_ia(texto):
             print(f"error: {e}")
             logging.warning(f"{nombre}: error inesperado {e}")
             continue
- 
+
     logging.error("Todos los modelos fallaron para esta factura")
     return None, None
- 
+
 # ─────────────────────────────────────────
 def guardar_factura(db_path, datos, archivo, modelo):
+    # Validar que la categoria sea una de las permitidas
+    categoria = datos.get('categoria', 'Otros')
+    if categoria not in CATEGORIAS_VALIDAS:
+        categoria = 'Otros'
+
     conn = sqlite3.connect(db_path)
     try:
         conn.execute('''
             INSERT INTO facturas 
             (archivo, hash, proveedor, ruc, fecha, monto_total, moneda,
-             descripcion, confianza, modelo_usado, notas, fecha_procesamiento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             descripcion, categoria, confianza, modelo_usado, notas, fecha_procesamiento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             archivo,
             datos.get('hash'),
@@ -330,6 +361,7 @@ def guardar_factura(db_path, datos, archivo, modelo):
             float(datos.get('monto_total', 0)),
             datos.get('moneda', 'USD'),
             datos.get('descripcion'),
+            categoria,
             int(datos.get('confianza', 70)),
             modelo,
             datos.get('notas'),
@@ -345,42 +377,42 @@ def guardar_factura(db_path, datos, archivo, modelo):
         return False
     finally:
         conn.close()
- 
+
 # ─────────────────────────────────────────
 def procesar_cliente(nombre_cliente, procesadas):
     rutas = get_rutas_cliente(nombre_cliente)
     crear_carpetas_cliente(rutas)
     init_db(rutas["db"])
- 
+
     archivos = [
         f for f in os.listdir(rutas["facturas"])
         if f.lower().endswith(('.pdf', '.txt', '.xlsx', '.xls'))
     ]
- 
+
     clave = lambda f: f"{nombre_cliente}/{f}"
- 
+
     for archivo in archivos:
         if clave(archivo) in procesadas:
             continue
- 
+
         ruta = os.path.join(rutas["facturas"], archivo)
         print(f"\n  [{nombre_cliente}] Procesando: {archivo}")
         logging.info(f"Iniciando: {nombre_cliente}/{archivo}")
- 
+
         file_hash = get_file_hash(ruta)
- 
+
         conn = sqlite3.connect(rutas["db"])
         existe = conn.execute(
             "SELECT 1 FROM facturas WHERE hash=?", (file_hash,)
         ).fetchone()
         conn.close()
- 
+
         if existe:
             print("   Duplicada, ignorando")
             mover_archivo(ruta, rutas["procesados"])
             procesadas.add(clave(archivo))
             continue
- 
+
         texto = extraer_texto(ruta)
         if not texto or len(texto.strip()) < 20:
             print("   No se pudo extraer texto util")
@@ -388,9 +420,9 @@ def procesar_cliente(nombre_cliente, procesadas):
             mover_archivo(ruta, rutas["error"])
             procesadas.add(clave(archivo))
             continue
- 
+
         resultado, modelo = llamar_ia(texto)
- 
+
         if resultado:
             resultado['hash'] = file_hash
             if guardar_factura(rutas["db"], resultado, archivo, modelo):
@@ -402,6 +434,7 @@ def procesar_cliente(nombre_cliente, procesadas):
                     f"Cliente: {nombre_cliente}\n"
                     f"Archivo: {archivo}\n"
                     f"Proveedor: {resultado.get('proveedor')}\n"
+                    f"Categoria: {resultado.get('categoria', 'Otros')}\n"
                     f"Monto: {resultado.get('monto_total')} {resultado.get('moneda')}\n"
                     f"Confianza: {resultado.get('confianza')}%\n"
                     f"Total en DB: {total} facturas"
@@ -420,13 +453,13 @@ def procesar_cliente(nombre_cliente, procesadas):
                 f"Todos los modelos fallaron"
             )
             mover_archivo(ruta, rutas["error"])
- 
+
         procesadas.add(clave(archivo))
- 
+
 # ─────────────────────────────────────────
 def main():
     os.makedirs(CARPETA_CLIENTES, exist_ok=True)
- 
+
     print("=" * 60)
     print("  SISTEMA MULTI-CLIENTE DE FACTURAS")
     print("=" * 60)
@@ -434,23 +467,23 @@ def main():
     print("  Para agregar un cliente, crea una carpeta con su nombre")
     print("  (Ctrl+C para detener)")
     print("=" * 60)
- 
+
     enviar_telegram("Sistema multi-cliente iniciado")
- 
+
     procesadas = set()
- 
+
     while True:
         clientes = listar_clientes()
- 
+
         if not clientes:
             print(" Sin clientes aun. Crea una carpeta en ./clientes/", end="\r")
         else:
             for cliente in clientes:
                 procesar_cliente(cliente, procesadas)
- 
+
         time.sleep(15)
- 
- 
+
+
 if __name__ == "__main__":
     try:
         main()
