@@ -462,7 +462,7 @@ def llamar_ia(texto):
 
             # Pausa entre modelos para evitar rate limiting
             if i > 0:
-                time.sleep(2)
+                time.sleep(0.5)
 
             data = {
                 "model": model,
@@ -483,7 +483,7 @@ def llamar_ia(texto):
                 method="POST"
             )
 
-            with urllib.request.urlopen(req, timeout=45) as resp:
+            with urllib.request.urlopen(req, timeout=20) as resp:
                 result = json.loads(resp.read().decode())
 
                 # Verificar que la respuesta tiene el formato esperado

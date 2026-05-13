@@ -214,6 +214,11 @@
   </div>
   {% endif %}
 
+  <!-- BANNER DE PROCESAMIENTO EN BACKGROUND -->
+  <div id="processingBanner" style="display:none;" class="flash" style="margin-bottom:1.5rem;">
+    <span id="processingMsg"></span>
+  </div>
+
   <!-- UPLOAD -->
   <div class="upload-section">
     <h2>Subir Facturas</h2>
@@ -418,6 +423,47 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') document.getElementById('modalOverlay').classList.remove('open');
   });
+
+  // ── Polling de estado de procesamiento ──────────────────────
+  const banner  = document.getElementById('processingBanner');
+  const bannerMsg = document.getElementById('processingMsg');
+  let pollTimer = null;
+
+  function checkJobStatus() {
+    fetch('/upload/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'processing') {
+          banner.className = 'flash warning';
+          banner.style.display = 'block';
+          bannerMsg.innerHTML = '⏳ <strong>Procesando facturas...</strong> La IA está extrayendo los datos. La tabla se actualizará automáticamente.';
+          if (!pollTimer) pollTimer = setInterval(checkJobStatus, 3000);
+        } else if (data.status === 'done') {
+          clearInterval(pollTimer); pollTimer = null;
+          banner.className = 'flash success';
+          banner.style.display = 'block';
+          bannerMsg.innerHTML = '✓ <strong>' + data.msg + '</strong> — <a href="/dashboard" style="color:inherit;text-decoration:underline;">Actualizar tabla</a>';
+        } else if (data.status === 'error') {
+          clearInterval(pollTimer); pollTimer = null;
+          banner.className = 'flash danger';
+          banner.style.display = 'block';
+          bannerMsg.innerHTML = '✗ Error procesando: ' + data.msg;
+        } else {
+          banner.style.display = 'none';
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Iniciar polling si hay un flash de "subido"
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}{% if 'segundo plano' in msg %}
+  setTimeout(checkJobStatus, 1500);
+    {% endif %}{% endfor %}
+  {% endwith %}
+
+  // También verificar al cargar por si quedó un job corriendo
+  checkJobStatus();
 </script>
 {% if facturas %}
 <script>

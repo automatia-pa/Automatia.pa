@@ -1,7 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 import os
+import threading
+import time
 import pandas as pd
 from dotenv import load_dotenv
 
@@ -42,6 +44,28 @@ db_init()
 
 # FIX 4: ADMIN_SECRET viene del .env
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
+
+# ── Estado de jobs en background (en memoria, por usuario) ───
+# { nombre_cliente: {"status": "processing"|"done"|"error", "msg": "...", "ts": float} }
+_jobs: dict = {}
+_jobs_lock = threading.Lock()
+
+def _run_background(nombre_cliente, archivos_guardados):
+    """Corre procesar_cliente en un thread separado y actualiza _jobs."""
+    with _jobs_lock:
+        _jobs[nombre_cliente] = {"status": "processing", "msg": "Procesando...", "ts": time.time()}
+    try:
+        from facturas_processor import procesar_cliente
+        procesar_cliente(nombre_cliente, set())
+        with _jobs_lock:
+            _jobs[nombre_cliente] = {
+                "status": "done",
+                "msg": f"{archivos_guardados} factura(s) procesada(s)",
+                "ts": time.time()
+            }
+    except Exception as e:
+        with _jobs_lock:
+            _jobs[nombre_cliente] = {"status": "error", "msg": str(e), "ts": time.time()}
 
 # ── INDEX + LOGIN ────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
@@ -201,28 +225,44 @@ def upload():
     os.makedirs(rutas["procesados"], exist_ok=True)
     os.makedirs(rutas["error"],      exist_ok=True)
 
-    procesados = 0
+    guardados = 0
     rechazados = 0
     for file in files:
         if file.filename == "":
             continue
-        # FIX 5: validar extensión y sanitizar nombre
         if not allowed_file(file.filename):
             rechazados += 1
             continue
         filename = secure_filename(file.filename)
         filepath = os.path.join(rutas["facturas"], filename)
         file.save(filepath)
-        procesados += 1
+        guardados += 1
 
     if rechazados > 0:
-        flash(f"{rechazados} archivo(s) rechazados (solo PDF, TXT, XLSX)", "warning")
+        flash(f"{rechazados} archivo(s) rechazados (solo PDF, TXT, XLSX, XML)", "warning")
 
-    if procesados > 0:
-        procesar_cliente(current_user.nombre, set())
-        flash(f"{procesados} factura(s) procesada(s) correctamente", "success")
+    if guardados > 0:
+        # Lanzar procesamiento en background — el browser no espera
+        t = threading.Thread(
+            target=_run_background,
+            args=(current_user.nombre, guardados),
+            daemon=True
+        )
+        t.start()
+        flash(f"{guardados} archivo(s) subido(s). Procesando en segundo plano...", "success")
 
     return redirect(url_for("dashboard"))
+
+
+# ── ESTADO DEL JOB (polling desde el dashboard) ──────────────
+@app.route("/upload/status")
+@login_required
+def upload_status():
+    with _jobs_lock:
+        job = _jobs.get(current_user.nombre)
+    if not job:
+        return jsonify({"status": "idle"})
+    return jsonify(job)
 
 # ── DOWNLOAD EXCEL ───────────────────────────────────────────
 @app.route("/download-excel")
