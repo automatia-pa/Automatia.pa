@@ -28,12 +28,11 @@ CARPETA_CLIENTES = "./clientes"
 # Modelos ordenados del más confiable al menos confiable
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen3-32b:free",
-    "qwen/qwen3-14b:free",
-    "qwen/qwen3-coder:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "google/gemma-3-12b-it:free",
-    "mistralai/mistral-7b-instruct:free",
+    "openai/gpt-oss-20b:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "nousresearch/hermes-3-llama-3.1-405b:free",
+    "openrouter/free",   # fallback automático al mejor disponible,
 ]
 
 # Campos obligatorios que debe tener el JSON para considerarse válido
