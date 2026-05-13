@@ -278,7 +278,7 @@ def llamar_ia(texto):
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
-                "max_tokens": 800
+                "max_tokens": 1500
             }
 
             req = urllib.request.Request(
