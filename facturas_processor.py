@@ -8,6 +8,7 @@ import hashlib
 import logging
 import time
 import shutil
+import xml.etree.ElementTree as ET
 from datetime import datetime
 
 import PyPDF2
@@ -113,23 +114,47 @@ def init_db(db_path):
             hash TEXT UNIQUE,
             proveedor TEXT,
             ruc TEXT,
+            receptor TEXT,
+            ruc_receptor TEXT,
             fecha TEXT,
             monto_total REAL,
+            subtotal REAL,
+            itbms REAL,
             moneda TEXT,
             descripcion TEXT,
             categoria TEXT DEFAULT "Otros",
             confianza INTEGER DEFAULT 70,
             modelo_usado TEXT,
             notas TEXT,
+            cufe TEXT,
+            tipo_doc TEXT DEFAULT "Factura",
+            fuente TEXT DEFAULT "llm",
+            estado TEXT DEFAULT "pendiente",
+            comentario_estado TEXT,
+            fecha_estado TEXT,
             fecha_procesamiento TEXT
         )
     ''')
-    # Agregar columna categoria si no existe (para bases de datos ya creadas)
-    try:
-        conn.execute('ALTER TABLE facturas ADD COLUMN categoria TEXT DEFAULT "Otros"')
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # La columna ya existe
+    # Migraciones para bases de datos existentes
+    nuevas_columnas = [
+        ('categoria',         'TEXT DEFAULT "Otros"'),
+        ('receptor',          'TEXT'),
+        ('ruc_receptor',      'TEXT'),
+        ('subtotal',          'REAL'),
+        ('itbms',             'REAL'),
+        ('cufe',              'TEXT'),
+        ('tipo_doc',          'TEXT DEFAULT "Factura"'),
+        ('fuente',            'TEXT DEFAULT "llm"'),
+        ('estado',            'TEXT DEFAULT "pendiente"'),
+        ('comentario_estado', 'TEXT'),
+        ('fecha_estado',      'TEXT'),
+    ]
+    for col, tipo in nuevas_columnas:
+        try:
+            conn.execute(f'ALTER TABLE facturas ADD COLUMN {col} {tipo}')
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # columna ya existe
     conn.commit()
     conn.close()
 
@@ -142,11 +167,20 @@ def exportar_excel(db_path, excel_path):
                 archivo as Archivo,
                 proveedor as Proveedor,
                 ruc as RUC,
+                receptor as Receptor,
+                ruc_receptor as RUC_Receptor,
                 fecha as Fecha,
                 monto_total as Monto_Total,
+                subtotal as Subtotal,
+                itbms as ITBMS,
                 moneda as Moneda,
                 categoria as Categoria,
+                tipo_doc as Tipo_Documento,
+                estado as Estado,
+                comentario_estado as Comentario,
                 descripcion as Descripcion,
+                cufe as CUFE,
+                fuente as Fuente,
                 confianza as Confianza,
                 modelo_usado as Modelo,
                 fecha_procesamiento as Fecha_Procesado
@@ -158,6 +192,55 @@ def exportar_excel(db_path, excel_path):
         return len(df)
     except Exception as e:
         logging.error(f"Error Excel: {e}")
+        return 0
+
+
+def exportar_dgi_csv(db_path, csv_path, periodo=None):
+    """
+    Genera el CSV con el formato requerido por la DGI Panamá
+    para declaración de compras (Formulario 43 / Anexo de compras).
+    Columnas requeridas: RUC_Proveedor, Nombre_Proveedor, Tipo_Doc,
+    Numero_Doc, Fecha, Subtotal, ITBMS, Total
+    Solo incluye facturas con estado 'aprobada'.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        query = """
+            SELECT
+                ruc          AS RUC_Proveedor,
+                proveedor    AS Nombre_Proveedor,
+                tipo_doc     AS Tipo_Documento,
+                archivo      AS Numero_Documento,
+                cufe         AS CUFE,
+                fecha        AS Fecha_Emision,
+                COALESCE(subtotal, monto_total - COALESCE(itbms, 0)) AS Subtotal,
+                COALESCE(itbms, 0)   AS ITBMS_7pct,
+                monto_total  AS Total_Factura,
+                moneda       AS Moneda,
+                categoria    AS Categoria
+            FROM facturas
+            WHERE estado = 'aprobada'
+        """
+        params = []
+        if periodo:
+            query += " AND fecha LIKE ?"
+            params.append(f"{periodo}%")
+        query += " ORDER BY fecha ASC"
+
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+
+        if df.empty:
+            return 0
+
+        # Formatear montos con 2 decimales
+        for col in ['Subtotal', 'ITBMS_7pct', 'Total_Factura']:
+            df[col] = df[col].apply(lambda x: f"{float(x or 0):.2f}")
+
+        df.to_csv(csv_path, index=False, encoding='utf-8-sig')  # utf-8-sig para Excel en Windows
+        return len(df)
+    except Exception as e:
+        logging.error(f"Error exportando CSV DGI: {e}")
         return 0
 
 # ─────────────────────────────────────────
@@ -178,6 +261,110 @@ def mover_archivo(ruta_origen, carpeta_destino):
     return False
 
 # ─────────────────────────────────────────
+def extraer_datos_xml_etax(ruta_archivo):
+    """
+    Parsea XMLs de factura electrónica e-Tax 2.0 de la DGI Panamá.
+    Retorna dict con campos ya estructurados (sin necesidad de LLM).
+    Namespaces comunes de e-Tax 2.0: urn:oasis:names:specification:ubl:schema:xsd:Invoice-2
+    """
+    try:
+        tree = ET.parse(ruta_archivo)
+        root = tree.getroot()
+
+        # Namespaces usados por e-Tax 2.0 / UBL 2.1
+        ns = {
+            'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+            'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+            'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+        }
+
+        def find_text(path, default=''):
+            el = root.find(path, ns)
+            return el.text.strip() if el is not None and el.text else default
+
+        # CUFE (Código Único de Factura Electrónica)
+        cufe = find_text('.//cbc:UUID') or find_text('.//cbc:ID')
+
+        # Datos del emisor (proveedor)
+        proveedor = find_text('.//cac:AccountingSupplierParty//cbc:RegistrationName') or \
+                    find_text('.//cac:AccountingSupplierParty//cbc:Name')
+        ruc = find_text('.//cac:AccountingSupplierParty//cbc:CompanyID') or \
+              find_text('.//cac:AccountingSupplierParty//cbc:ID')
+
+        # Datos del receptor (cliente)
+        receptor = find_text('.//cac:AccountingCustomerParty//cbc:RegistrationName') or \
+                   find_text('.//cac:AccountingCustomerParty//cbc:Name')
+        ruc_receptor = find_text('.//cac:AccountingCustomerParty//cbc:CompanyID')
+
+        # Fecha
+        fecha = find_text('.//cbc:IssueDate')
+
+        # Montos
+        monto_total_str = find_text('.//cac:LegalMonetaryTotal//cbc:PayableAmount') or \
+                          find_text('.//cbc:TaxInclusiveAmount')
+        subtotal_str    = find_text('.//cac:LegalMonetaryTotal//cbc:TaxExclusiveAmount') or \
+                          find_text('.//cac:LegalMonetaryTotal//cbc:LineExtensionAmount')
+        itbms_str       = find_text('.//cac:TaxTotal//cbc:TaxAmount')
+
+        moneda = find_text('.//cbc:DocumentCurrencyCode') or 'USD'
+
+        # Tipo de documento
+        tipo_doc_map = {'01': 'Factura', '02': 'Nota de Crédito', '03': 'Nota de Débito',
+                        '04': 'Factura de Importación', '08': 'Factura de Exportación'}
+        tipo_cod = find_text('.//cbc:InvoiceTypeCode')
+        tipo_doc = tipo_doc_map.get(tipo_cod, f'Documento {tipo_cod}')
+
+        # Descripción (primer ítem)
+        descripcion = find_text('.//cac:InvoiceLine//cbc:Description') or \
+                      find_text('.//cac:InvoiceLine//cbc:Name') or \
+                      f'{tipo_doc} electrónica'
+
+        try:
+            monto_total = float(monto_total_str)
+        except (ValueError, TypeError):
+            monto_total = 0.0
+
+        try:
+            itbms = float(itbms_str)
+        except (ValueError, TypeError):
+            itbms = 0.0
+
+        try:
+            subtotal = float(subtotal_str)
+        except (ValueError, TypeError):
+            subtotal = monto_total - itbms
+
+        if not proveedor or monto_total == 0:
+            logging.warning(f"XML e-Tax sin campos mínimos: {ruta_archivo}")
+            return None
+
+        return {
+            'proveedor':    proveedor,
+            'ruc':          ruc,
+            'receptor':     receptor,
+            'ruc_receptor': ruc_receptor,
+            'fecha':        fecha,
+            'monto_total':  monto_total,
+            'subtotal':     subtotal,
+            'itbms':        itbms,
+            'moneda':       moneda,
+            'descripcion':  descripcion,
+            'cufe':         cufe,
+            'tipo_doc':     tipo_doc,
+            'confianza':    100,   # datos estructurados = confianza total
+            'categoria':    'Otros',
+            'notas':        f'e-Tax 2.0 | CUFE: {cufe}',
+            'fuente':       'xml_etax',
+        }
+
+    except ET.ParseError as e:
+        logging.error(f"XML inválido {ruta_archivo}: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Error parseando XML e-Tax {ruta_archivo}: {e}")
+        return None
+
+
 def extraer_texto(ruta_archivo):
     ext = os.path.splitext(ruta_archivo)[1].lower()
     try:
@@ -349,7 +536,6 @@ def llamar_ia(texto):
 
 # ─────────────────────────────────────────
 def guardar_factura(db_path, datos, archivo, modelo):
-    # Validar que la categoria sea una de las permitidas
     categoria = datos.get('categoria', 'Otros')
     if categoria not in CATEGORIAS_VALIDAS:
         categoria = 'Otros'
@@ -358,22 +544,31 @@ def guardar_factura(db_path, datos, archivo, modelo):
     try:
         conn.execute('''
             INSERT INTO facturas 
-            (archivo, hash, proveedor, ruc, fecha, monto_total, moneda,
-             descripcion, categoria, confianza, modelo_usado, notas, fecha_procesamiento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (archivo, hash, proveedor, ruc, receptor, ruc_receptor, fecha,
+             monto_total, subtotal, itbms, moneda, descripcion, categoria,
+             confianza, modelo_usado, notas, cufe, tipo_doc, fuente,
+             estado, fecha_procesamiento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?)
         ''', (
             archivo,
             datos.get('hash'),
             datos.get('proveedor'),
             datos.get('ruc'),
+            datos.get('receptor'),
+            datos.get('ruc_receptor'),
             datos.get('fecha'),
             float(datos.get('monto_total', 0)),
+            float(datos.get('subtotal', 0)) if datos.get('subtotal') else None,
+            float(datos.get('itbms', 0)) if datos.get('itbms') else None,
             datos.get('moneda', 'USD'),
             datos.get('descripcion'),
             categoria,
             int(datos.get('confianza', 70)),
             modelo,
             datos.get('notas'),
+            datos.get('cufe'),
+            datos.get('tipo_doc', 'Factura'),
+            datos.get('fuente', 'llm'),
             datetime.now().isoformat()
         ))
         conn.commit()
@@ -395,7 +590,7 @@ def procesar_cliente(nombre_cliente, procesadas):
 
     archivos = [
         f for f in os.listdir(rutas["facturas"])
-        if f.lower().endswith(('.pdf', '.txt', '.xlsx', '.xls'))
+        if f.lower().endswith(('.pdf', '.txt', '.xlsx', '.xls', '.xml'))
     ]
 
     clave = lambda f: f"{nombre_cliente}/{f}"
@@ -405,6 +600,7 @@ def procesar_cliente(nombre_cliente, procesadas):
             continue
 
         ruta = os.path.join(rutas["facturas"], archivo)
+        ext  = os.path.splitext(archivo)[1].lower()
         print(f"\n  [{nombre_cliente}] Procesando: {archivo}")
         logging.info(f"Iniciando: {nombre_cliente}/{archivo}")
 
@@ -422,28 +618,49 @@ def procesar_cliente(nombre_cliente, procesadas):
             procesadas.add(clave(archivo))
             continue
 
-        texto = extraer_texto(ruta)
-        if not texto or len(texto.strip()) < 20:
-            print("   No se pudo extraer texto util")
-            logging.error(f"Texto insuficiente: {archivo}")
-            mover_archivo(ruta, rutas["error"])
-            procesadas.add(clave(archivo))
-            continue
+        resultado = None
+        modelo    = None
 
-        resultado, modelo = llamar_ia(texto)
+        # ── XML e-Tax 2.0: parse directo, sin LLM ──────────────────
+        if ext == ".xml":
+            resultado = extraer_datos_xml_etax(ruta)
+            if resultado:
+                modelo = "e-Tax-XML"
+                resultado['hash'] = file_hash
+            else:
+                print("   XML inválido o sin campos mínimos")
+                logging.error(f"XML e-Tax inválido: {archivo}")
+                mover_archivo(ruta, rutas["error"])
+                procesadas.add(clave(archivo))
+                continue
+
+        # ── PDF / TXT / XLSX: extracción de texto + LLM ────────────
+        else:
+            texto = extraer_texto(ruta)
+            if not texto or len(texto.strip()) < 20:
+                print("   No se pudo extraer texto util")
+                logging.error(f"Texto insuficiente: {archivo}")
+                mover_archivo(ruta, rutas["error"])
+                procesadas.add(clave(archivo))
+                continue
+
+            resultado, modelo = llamar_ia(texto)
+            if resultado:
+                resultado['hash'] = file_hash
 
         if resultado:
-            resultado['hash'] = file_hash
             if guardar_factura(rutas["db"], resultado, archivo, modelo):
                 total = exportar_excel(rutas["db"], rutas["excel"])
-                print(f"   OK: {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')} | Confianza: {resultado.get('confianza')}%")
+                fuente_tag = "🧾 e-Tax XML" if ext == ".xml" else f"🤖 {modelo}"
+                print(f"   OK: {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')} | {fuente_tag}")
                 logging.info(f"OK: {archivo} | {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')}")
                 enviar_telegram(
-                    f"Factura procesada\n"
+                    f"{'🧾' if ext == '.xml' else '📄'} Factura procesada\n"
                     f"Cliente: {nombre_cliente}\n"
                     f"Archivo: {archivo}\n"
+                    f"Fuente: {fuente_tag}\n"
                     f"Proveedor: {resultado.get('proveedor')}\n"
-                    f"Categoria: {resultado.get('categoria', 'Otros')}\n"
+                    f"Categoría: {resultado.get('categoria', 'Otros')}\n"
                     f"Monto: {resultado.get('monto_total')} {resultado.get('moneda')}\n"
                     f"Confianza: {resultado.get('confianza')}%\n"
                     f"Total en DB: {total} facturas"
@@ -456,7 +673,7 @@ def procesar_cliente(nombre_cliente, procesadas):
             print("   Fallo el procesamiento con todos los modelos")
             logging.error(f"FALLO TOTAL: {nombre_cliente}/{archivo}")
             enviar_telegram(
-                f"Error procesando factura\n"
+                f"❌ Error procesando factura\n"
                 f"Cliente: {nombre_cliente}\n"
                 f"Archivo: {archivo}\n"
                 f"Todos los modelos fallaron"

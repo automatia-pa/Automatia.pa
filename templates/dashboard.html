@@ -92,6 +92,42 @@
   .conf-fill.mid { background: var(--accent3); }
   .conf-fill.low { background: var(--error); }
 
+  /* ESTADO BADGES */
+  .estado-badge { display:inline-block; padding:0.2rem 0.6rem; border-radius:100px; font-size:0.72rem; font-weight:600; white-space:nowrap; }
+  .estado-aprobada { background:rgba(0,229,195,0.12); color:var(--accent); border:1px solid rgba(0,229,195,0.25); }
+  .estado-en_revision { background:rgba(245,158,11,0.12); color:var(--accent3); border:1px solid rgba(245,158,11,0.25); }
+  .estado-rechazada { background:rgba(248,113,113,0.12); color:var(--error); border:1px solid rgba(248,113,113,0.25); }
+  .estado-pendiente { background:rgba(122,143,173,0.1); color:var(--muted); border:1px solid rgba(122,143,173,0.2); }
+
+  /* ACTION BUTTON */
+  .action-btn { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:0.3rem 0.7rem; font-size:0.78rem; cursor:pointer; font-family:"DM Sans",sans-serif; transition:all 0.2s; }
+  .action-btn:hover { border-color:rgba(0,229,195,0.4); color:var(--accent); background:rgba(0,229,195,0.04); }
+
+  /* MODAL */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); z-index:1000; align-items:center; justify-content:center; padding:1rem; }
+  .modal-overlay.open { display:flex; }
+  .modal-card { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:2rem; width:100%; max-width:460px; }
+  .modal-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1.5rem; }
+  .modal-title { font-family:"Syne",sans-serif; font-size:1.1rem; font-weight:700; }
+  .modal-sub { font-size:0.82rem; color:var(--muted); margin-top:0.2rem; }
+  .modal-close { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; width:32px; height:32px; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .modal-close:hover { color:var(--text); }
+  .modal-estados { display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1.25rem; }
+  .estado-opcion { display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; border:1px solid var(--border); border-radius:12px; cursor:pointer; transition:all 0.2s; font-size:0.88rem; color:var(--muted); }
+  .estado-opcion:has(input:checked) { border-color:rgba(0,229,195,0.4); background:rgba(0,229,195,0.04); color:var(--text); }
+  .estado-opcion input { display:none; }
+  .estado-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .estado-dot.aprobada { background:var(--accent); }
+  .estado-dot.en_revision { background:var(--accent3); }
+  .estado-dot.rechazada { background:var(--error); }
+  .estado-dot.pendiente { background:var(--muted); }
+  .form-group-modal label.modal-label { display:block; font-size:0.78rem; color:var(--muted); margin-bottom:0.4rem; text-transform:uppercase; letter-spacing:0.05em; }
+  .form-group-modal textarea { width:100%; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:0.75rem 1rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.88rem; resize:vertical; outline:none; }
+  .form-group-modal textarea:focus { border-color:rgba(0,229,195,0.4); }
+  .btn-cancel { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:100px; padding:0.6rem 1.25rem; font-size:0.88rem; cursor:pointer; font-family:"DM Sans",sans-serif; }
+  .btn-guardar { background:var(--accent); color:#030F0D; border:none; border-radius:100px; padding:0.6rem 1.5rem; font-size:0.88rem; font-weight:600; cursor:pointer; font-family:"DM Sans",sans-serif; transition:opacity 0.2s; }
+  .btn-guardar:hover { opacity:0.9; }
+
   @media (max-width: 768px) {
     .metrics { grid-template-columns: repeat(2, 1fr); }
     table { font-size: 0.78rem; }
@@ -183,10 +219,10 @@
     <h2>Subir Facturas</h2>
     <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
       <div class="upload-zone" id="dropZone">
-        <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls" id="fileInput">
+        <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls,.xml" id="fileInput">
         <div class="upload-icon">&#128196;</div>
         <p>Arrastra tus facturas aqui o <span>selecciona archivos</span></p>
-        <small>PDF, TXT, XLSX &mdash; hasta 20MB por archivo</small>
+        <small>PDF, TXT, XLSX, <strong style="color:var(--accent)">XML e-Tax 2.0</strong> &mdash; hasta 10MB por archivo</small>
       </div>
       <div class="file-list" id="fileList"></div>
       <button type="submit" class="upload-btn" id="uploadBtn">Procesar facturas</button>
@@ -198,7 +234,10 @@
     <div class="table-header">
       <h2>Facturas Procesadas</h2>
       {% if facturas %}
-        <a href="/download-excel" class="download-btn">Descargar Excel</a>
+      <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+        <a href="/download-dgi" class="download-btn" title="Solo facturas aprobadas, formato DGI Panamá">&#128196; Exportar DGI</a>
+        <a href="/download-excel" class="download-btn">&#8595; Excel Completo</a>
+      </div>
       {% endif %}
     </div>
 
@@ -211,25 +250,38 @@
       <table>
         <thead>
           <tr>
-            <th>Archivo</th>
             <th>Proveedor</th>
             <th>RUC</th>
             <th>Fecha</th>
             <th>Monto</th>
-            <th>Moneda</th>
+            <th>ITBMS</th>
+            <th>Fuente</th>
             <th>Confianza</th>
-            <th>Descripcion</th>
+            <th>Estado</th>
+            <th>Accion</th>
           </tr>
         </thead>
         <tbody>
           {% for f in facturas %}
+          {% set fid = loop.index %}
           <tr>
-            <td>{{ f.get('Archivo', '') }}</td>
-            <td class="td-proveedor">{{ f.get('Proveedor', '') }}</td>
-            <td>{{ f.get('RUC', '') }}</td>
-            <td>{{ f.get('Fecha', '') }}</td>
+            <td>
+              <div class="td-proveedor">{{ f.get('Proveedor', '') }}</div>
+              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">{{ f.get('Archivo', '')[:30] }}</div>
+            </td>
+            <td>{{ f.get('RUC', '') or '—' }}</td>
+            <td>{{ f.get('Fecha', '') or '—' }}</td>
             <td class="td-monto">${{ "{:,.2f}".format(f.get('Monto_Total', 0) or 0) }}</td>
-            <td>{{ f.get('Moneda', '') }}</td>
+            <td style="color:var(--muted)">
+              {% if f.get('ITBMS') %}${{ "{:,.2f}".format(f.get('ITBMS', 0) or 0) }}{% else %}—{% endif %}
+            </td>
+            <td>
+              {% if f.get('Fuente') == 'xml_etax' %}
+                <span class="badge high">🧾 e-Tax</span>
+              {% else %}
+                <span class="badge mid">🤖 IA</span>
+              {% endif %}
+            </td>
             <td>
               {% set conf = f.get('Confianza', 0) or 0 %}
               <div class="conf-wrap">
@@ -240,7 +292,23 @@
                 <span class="badge {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}">{{ conf }}%</span>
               </div>
             </td>
-            <td>{{ f.get('Descripcion', '')[:60] }}{% if f.get('Descripcion', '') | length > 60 %}...{% endif %}</td>
+            <td>
+              {% set estado = f.get('Estado', 'pendiente') or 'pendiente' %}
+              <span class="estado-badge estado-{{ estado }}">
+                {% if estado == 'aprobada' %}✓ Aprobada
+                {% elif estado == 'en_revision' %}⏳ En Revisión
+                {% elif estado == 'rechazada' %}✗ Rechazada
+                {% else %}● Pendiente{% endif %}
+              </span>
+              {% if f.get('Comentario_Estado') %}
+                <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ f.get('Comentario_Estado') }}">{{ f.get('Comentario_Estado') }}</div>
+              {% endif %}
+            </td>
+            <td>
+              <button class="action-btn" onclick="abrirModal({{ fid }}, '{{ f.get('Proveedor', '')|e }}', '{{ f.get('Estado', 'pendiente') or 'pendiente' }}')">
+                Gestionar
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -248,6 +316,48 @@
     {% endif %}
   </div>
 
+</div>
+
+<!-- MODAL APROBACION -->
+<div id="modalOverlay" class="modal-overlay" onclick="cerrarModal(event)">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modalTitle">Gestionar Factura</div>
+        <div class="modal-sub" id="modalSub"></div>
+      </div>
+      <button onclick="cerrarModal()" class="modal-close">✕</button>
+    </div>
+    <form method="POST" action="/factura/estado" id="modalForm">
+      <input type="hidden" name="factura_id" id="modalFacturaId">
+      <div class="modal-estados">
+        <label class="estado-opcion" data-estado="aprobada">
+          <input type="radio" name="estado" value="aprobada" required>
+          <span class="estado-dot aprobada"></span> Aprobada para pago
+        </label>
+        <label class="estado-opcion" data-estado="en_revision">
+          <input type="radio" name="estado" value="en_revision">
+          <span class="estado-dot en_revision"></span> En revisión
+        </label>
+        <label class="estado-opcion" data-estado="rechazada">
+          <input type="radio" name="estado" value="rechazada">
+          <span class="estado-dot rechazada"></span> Rechazada
+        </label>
+        <label class="estado-opcion" data-estado="pendiente">
+          <input type="radio" name="estado" value="pendiente">
+          <span class="estado-dot pendiente"></span> Pendiente
+        </label>
+      </div>
+      <div class="form-group-modal">
+        <label class="modal-label">Comentario (opcional)</label>
+        <textarea name="comentario" id="modalComentario" placeholder="Ej: Falta número de orden de compra..." rows="3"></textarea>
+      </div>
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;">
+        <button type="button" onclick="cerrarModal()" class="btn-cancel">Cancelar</button>
+        <button type="submit" class="btn-guardar">Guardar estado</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script>
@@ -273,11 +383,41 @@
     Array.from(files).forEach(f => {
       const el = document.createElement('div');
       el.className = 'file-item';
-      el.innerHTML = '&#128196; ' + f.name + ' <span style="margin-left:auto;opacity:0.6;">' + (f.size / 1024).toFixed(1) + ' KB</span>';
+      const isXML = f.name.toLowerCase().endsWith('.xml');
+      el.innerHTML = (isXML ? '🧾 ' : '📄 ') + f.name + ' <span style="margin-left:auto;opacity:0.6;">' + (f.size / 1024).toFixed(1) + ' KB</span>';
       fileList.appendChild(el);
     });
     uploadBtn.style.display = 'block';
   }
+
+  // ── Modal de aprobación ──────────────────────────────────
+  // Mapa de índice de fila → ID real de la factura en DB
+  const facturaIds = {{ facturas | map(attribute='id') | list | tojson if facturas else '[]' }};
+
+  function abrirModal(idx, proveedor, estadoActual) {
+    const realId = facturaIds[idx - 1];
+    document.getElementById('modalFacturaId').value = realId;
+    document.getElementById('modalTitle').textContent = 'Gestionar Factura';
+    document.getElementById('modalSub').textContent = proveedor;
+    document.getElementById('modalComentario').value = '';
+
+    // Marcar radio del estado actual
+    document.querySelectorAll('.estado-opcion input').forEach(r => {
+      r.checked = (r.value === estadoActual);
+    });
+
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function cerrarModal(e) {
+    if (!e || e.target === document.getElementById('modalOverlay') || e.target.classList.contains('modal-close') || e.currentTarget.tagName === 'BUTTON') {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.getElementById('modalOverlay').classList.remove('open');
+  });
 </script>
 {% if facturas %}
 <script>

@@ -6,7 +6,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from models import User, db_init
-from facturas_processor import procesar_cliente, get_rutas_cliente
+from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
 
 # ── Cargar variables de entorno ──────────────────────────────
 load_dotenv()
@@ -22,7 +22,7 @@ if not app.secret_key:
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
 # FIX 3: extensiones permitidas
-ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls'}
+ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml'}
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -96,15 +96,95 @@ def login():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    import sqlite3 as _sq
     rutas = get_rutas_cliente(current_user.nombre)
     facturas = []
-    if os.path.exists(rutas["excel"]):
+    if os.path.exists(rutas["db"]):
         try:
-            df = pd.read_excel(rutas["excel"])
-            facturas = df.to_dict("records")
+            conn = _sq.connect(rutas["db"])
+            conn.row_factory = _sq.Row
+            rows = conn.execute("""
+                SELECT id, archivo AS Archivo, proveedor AS Proveedor,
+                       ruc AS RUC, fecha AS Fecha,
+                       monto_total AS Monto_Total, subtotal AS Subtotal,
+                       itbms AS ITBMS, moneda AS Moneda,
+                       categoria AS Categoria, tipo_doc AS Tipo_Documento,
+                       fuente AS Fuente, confianza AS Confianza,
+                       estado AS Estado,
+                       comentario_estado AS Comentario_Estado,
+                       descripcion AS Descripcion, cufe AS CUFE,
+                       fecha_procesamiento AS Fecha_Procesado
+                FROM facturas ORDER BY fecha_procesamiento DESC
+            """).fetchall()
+            facturas = [dict(r) for r in rows]
+            conn.close()
         except Exception:
             pass
     return render_template("dashboard.html", user=current_user, facturas=facturas)
+
+
+# ── APROBAR / RECHAZAR / REVISAR FACTURA ─────────────────────
+@app.route("/factura/estado", methods=["POST"])
+@login_required
+def actualizar_estado():
+    import sqlite3
+    from datetime import datetime
+
+    factura_id  = request.form.get("factura_id")
+    nuevo_estado = request.form.get("estado")
+    comentario  = request.form.get("comentario", "")
+
+    estados_validos = {"aprobada", "en_revision", "rechazada", "pendiente"}
+    if nuevo_estado not in estados_validos:
+        flash("Estado inválido", "danger")
+        return redirect(url_for("dashboard"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Sin datos aún", "warning")
+        return redirect(url_for("dashboard"))
+
+    conn = sqlite3.connect(rutas["db"])
+    conn.execute("""
+        UPDATE facturas
+        SET estado = ?, comentario_estado = ?, fecha_estado = ?
+        WHERE id = ?
+    """, (nuevo_estado, comentario, datetime.now().isoformat(), factura_id))
+    conn.commit()
+    conn.close()
+
+    # Re-exportar Excel con estado actualizado
+    from facturas_processor import exportar_excel
+    exportar_excel(rutas["db"], rutas["excel"])
+
+    etiquetas = {"aprobada": "aprobada ✓", "en_revision": "en revisión", "rechazada": "rechazada ✗", "pendiente": "pendiente"}
+    flash(f"Factura marcada como {etiquetas.get(nuevo_estado, nuevo_estado)}", "success")
+    return redirect(url_for("dashboard"))
+
+
+# ── DOWNLOAD CSV DGI ─────────────────────────────────────────
+@app.route("/download-dgi")
+@login_required
+def download_dgi():
+    import tempfile
+    periodo = request.args.get("periodo")  # e.g. "2026-04" para filtrar por mes
+    rutas = get_rutas_cliente(current_user.nombre)
+
+    if not os.path.exists(rutas["db"]):
+        flash("Aún no tienes facturas procesadas", "warning")
+        return redirect(url_for("dashboard"))
+
+    # Guardar CSV temporal
+    sufijo = f"_{periodo}" if periodo else ""
+    csv_path = os.path.join(rutas["base"], f"declaracion_dgi{sufijo}.csv")
+    total = exportar_dgi_csv(rutas["db"], csv_path, periodo=periodo)
+
+    if total == 0:
+        flash("No hay facturas aprobadas para exportar. Aprueba facturas primero.", "warning")
+        return redirect(url_for("dashboard"))
+
+    return send_file(csv_path, as_attachment=True,
+                     download_name=f"declaracion_dgi{sufijo}.csv")
 
 # ── UPLOAD ───────────────────────────────────────────────────
 @app.route("/upload", methods=["POST"])
