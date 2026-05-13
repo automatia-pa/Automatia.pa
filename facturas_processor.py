@@ -29,8 +29,11 @@ CARPETA_CLIENTES = "./clientes"
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
     "qwen/qwen3-32b:free",
+    "qwen/qwen3-14b:free",
     "qwen/qwen3-coder:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-3-12b-it:free",
+    "mistralai/mistral-7b-instruct:free",
 ]
 
 # Campos obligatorios que debe tener el JSON para considerarse válido
@@ -211,7 +214,12 @@ def validar_resultado(datos):
     return True
 
 def parsear_json_respuesta(content):
-    """Intenta extraer y parsear el JSON de la respuesta de la IA"""
+    # Eliminar bloques <think>...</think> de Qwen3
+    if "<think>" in content:
+        fin_think = content.find("</think>")
+        if fin_think != -1:
+            content = content[fin_think + len("</think>"):].strip()
+
     # Limpiar bloques de código markdown
     if "```" in content:
         partes = content.split("```")
@@ -221,7 +229,6 @@ def parsear_json_respuesta(content):
                 content = parte
                 break
 
-    # Extraer solo el JSON
     inicio = content.find("{")
     fin = content.rfind("}") + 1
     if inicio == -1 or fin <= inicio:
