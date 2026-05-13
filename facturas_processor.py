@@ -29,6 +29,9 @@ CARPETA_CLIENTES = "./clientes"
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+    "nvidia/nemotron-nano-12b-2-VL:free",
+    "openai/gpt-oss-120b:free",
     "openai/gpt-oss-20b:free",
     "google/gemma-4-26b-a4b-it:free",
     "nousresearch/hermes-3-llama-3.1-405b:free",
