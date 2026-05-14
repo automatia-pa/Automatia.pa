@@ -15,6 +15,9 @@ load_dotenv()
 app = Flask(__name__)
 
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY no está configurado en .env")
 
