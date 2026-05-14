@@ -107,8 +107,6 @@ CATEGORIAS_VALIDAS = [
 
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")  # FIX5: seguro para acceso concurrente
-    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute('''
         CREATE TABLE IF NOT EXISTS facturas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,13 +244,6 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
         return 0
 
 # ─────────────────────────────────────────
-def _get_db_conn(db_path):
-    """Abre conexión SQLite con WAL mode para seguridad concurrente."""
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    return conn
-
 def get_file_hash(ruta):
     with open(ruta, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
@@ -549,7 +540,7 @@ def guardar_factura(db_path, datos, archivo, modelo):
     if categoria not in CATEGORIAS_VALIDAS:
         categoria = 'Otros'
 
-    conn = _get_db_conn(db_path)
+    conn = sqlite3.connect(db_path)
     try:
         conn.execute('''
             INSERT INTO facturas 
@@ -615,7 +606,7 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         file_hash = get_file_hash(ruta)
 
-        conn = _get_db_conn(rutas["db"])
+        conn = sqlite3.connect(rutas["db"])
         existe = conn.execute(
             "SELECT 1 FROM facturas WHERE hash=?", (file_hash,)
         ).fetchone()
@@ -659,6 +650,7 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         if resultado:
             if guardar_factura(rutas["db"], resultado, archivo, modelo):
+                total = exportar_excel(rutas["db"], rutas["excel"])
                 fuente_tag = "🧾 e-Tax XML" if ext == ".xml" else f"🤖 {modelo}"
                 print(f"   OK: {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')} | {fuente_tag}")
                 logging.info(f"OK: {archivo} | {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')}")
@@ -689,9 +681,6 @@ def procesar_cliente(nombre_cliente, procesadas):
             mover_archivo(ruta, rutas["error"])
 
         procesadas.add(clave(archivo))
-
-    # Exportar Excel una sola vez al terminar todos los archivos
-    exportar_excel(rutas["db"], rutas["excel"])
 
 # ─────────────────────────────────────────
 def main():

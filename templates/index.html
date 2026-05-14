@@ -304,9 +304,6 @@
       <div id="ddError" class="dd-error-msg"></div>
 
       <form method="POST" action="/login" class="dd-form" id="loginForm">
-    {{ form.hidden_tag() if form else '' }}
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
         <div>
           <label class="dd-label">Correo electronico</label>
           <input class="dd-input" type="email" name="email" placeholder="empresa@correo.com" required autocomplete="email">
@@ -336,9 +333,6 @@
     <h3>Automat<span style="color:var(--accent)">IA</span> — Portal</h3>
     <p>Ingresa a tu cuenta</p>
     <form method="POST" action="/login" style="display:flex;flex-direction:column;gap:0.65rem;">
-    {{ form.hidden_tag() if form else '' }}
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
       <div>
         <label class="dd-label">Correo</label>
         <input class="dd-input" type="email" name="email" placeholder="empresa@correo.com" required>

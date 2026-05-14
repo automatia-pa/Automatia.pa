@@ -46,9 +46,6 @@
   {% endwith %}
 
   <form method="POST">
-    {{ form.hidden_tag() if form else '' }}
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
     <div class="form-group">
       <label>Correo electronico</label>
       <input type="email" name="email" placeholder="empresa@correo.com" required>
