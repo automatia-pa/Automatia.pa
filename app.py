@@ -166,9 +166,12 @@ def index():
 # ── REGISTER ──────────────────────────────────────────────────
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    admin_key = request.args.get("key") or request.form.get("admin_key")
+    # Mejor seguridad: Admin key por form o header (no solo query string)
+    admin_key = request.form.get("admin_key") or request.headers.get("X-Admin-Key")
+
     if not ADMIN_SECRET or not secrets.compare_digest(admin_key or "", ADMIN_SECRET):
-        return redirect(url_for("index"))
+        abort(403)  # Bloquea acceso directamente
+
     if request.method == "POST":
         validate_csrf()
         nombre   = request.form.get("nombre", "").strip()
@@ -178,20 +181,24 @@ def register():
         # Validaciones
         if not nombre or not email or not password:
             flash("Todos los campos son obligatorios", "danger")
-            return redirect(url_for("register", key=admin_key))
+            return redirect(url_for("register"))
+
         if len(password) < 10:
             flash("La contraseña debe tener al menos 10 caracteres", "danger")
-            return redirect(url_for("register", key=admin_key))
+            return redirect(url_for("register"))
+
         if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
             flash("Correo inválido", "danger")
-            return redirect(url_for("register", key=admin_key))
+            return redirect(url_for("register"))
 
         if User.exists(email):
             flash("Este correo ya está registrado", "danger")
-            return redirect(url_for("register", key=admin_key))
+            return redirect(url_for("register"))
+
         User.create(nombre, email, password)
         flash(f"Cliente '{nombre}' creado exitosamente", "success")
-        return redirect(url_for("register", key=admin_key))
+        return redirect(url_for("register"))
+
     return render_template("register.html")
 
 # ── LOGIN ─────────────────────────────────────────────────────
@@ -399,5 +406,4 @@ def logout():
 
 if __name__ == "__main__":
     app.run(debug=False)
-
 
