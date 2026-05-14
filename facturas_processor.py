@@ -10,9 +10,12 @@ import time
 import shutil
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+import re
 
 import PyPDF2
-import pandas as pd
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +29,6 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 CARPETA_CLIENTES = "./clientes"
 
-# Modelos ordenados del más confiable al menos confiable
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
@@ -36,18 +38,18 @@ MODELOS = [
     "openai/gpt-oss-20b:free",
     "google/gemma-4-26b-a4b-it:free",
     "nousresearch/hermes-3-llama-3.1-405b:free",
-    "openrouter/free",   # fallback automático al mejor disponible,
+    "openrouter/free",
 ]
 
-# Campos obligatorios que debe tener el JSON para considerarse válido
 CAMPOS_OBLIGATORIOS = ["proveedor", "monto_total", "moneda"]
 
-logging.basicConfig(
-    filename="procesamiento.log",
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
-    encoding='utf-8'
+# ── Logging con rotación (máx 2MB × 3 archivos) ─────────────
+_handler = RotatingFileHandler(
+    "procesamiento.log", maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
 )
+_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+logging.getLogger().addHandler(_handler)
+logging.getLogger().setLevel(logging.INFO)
 
 # ─────────────────────────────────────────
 def enviar_telegram(mensaje):
@@ -67,7 +69,15 @@ def enviar_telegram(mensaje):
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
-    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientes", nombre_cliente)
+    # Sanitizar nombre para evitar path traversal
+    nombre_seguro = re.sub(r'[^\w\s\-.]', '', nombre_cliente).strip()
+    if not nombre_seguro:
+        raise ValueError("Nombre de cliente inválido")
+    base_clientes = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientes")
+    base = os.path.join(base_clientes, nombre_seguro)
+    # Verificar que no escapó del directorio base
+    if not os.path.abspath(base).startswith(os.path.abspath(base_clientes)):
+        raise ValueError("Ruta inválida")
     return {
         "base":       base,
         "facturas":   os.path.join(base, "facturas"),
@@ -93,103 +103,121 @@ def listar_clientes():
 
 # ─────────────────────────────────────────
 CATEGORIAS_VALIDAS = [
-    "Servicios",
-    "Materiales y Suministros",
-    "Transporte y Logistica",
-    "Tecnologia y Software",
-    "Nomina y RRHH",
-    "Alquiler e Inmuebles",
-    "Publicidad y Marketing",
-    "Impuestos y Tasas",
-    "Alimentacion",
-    "Otros",
+    "Servicios", "Materiales y Suministros", "Transporte y Logistica",
+    "Tecnologia y Software", "Nomina y RRHH", "Alquiler e Inmuebles",
+    "Publicidad y Marketing", "Impuestos y Tasas", "Alimentacion", "Otros",
 ]
 
 def init_db(db_path):
-    conn = sqlite3.connect(db_path)
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS facturas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            archivo TEXT UNIQUE,
-            hash TEXT UNIQUE,
-            proveedor TEXT,
-            ruc TEXT,
-            receptor TEXT,
-            ruc_receptor TEXT,
-            fecha TEXT,
-            monto_total REAL,
-            subtotal REAL,
-            itbms REAL,
-            moneda TEXT,
-            descripcion TEXT,
-            categoria TEXT DEFAULT "Otros",
-            confianza INTEGER DEFAULT 70,
-            modelo_usado TEXT,
-            notas TEXT,
-            cufe TEXT,
-            tipo_doc TEXT DEFAULT "Factura",
-            fuente TEXT DEFAULT "llm",
-            estado TEXT DEFAULT "pendiente",
-            comentario_estado TEXT,
-            fecha_estado TEXT,
-            fecha_procesamiento TEXT
-        )
-    ''')
-    # Migraciones para bases de datos existentes
-    nuevas_columnas = [
-        ('categoria',         'TEXT DEFAULT "Otros"'),
-        ('receptor',          'TEXT'),
-        ('ruc_receptor',      'TEXT'),
-        ('subtotal',          'REAL'),
-        ('itbms',             'REAL'),
-        ('cufe',              'TEXT'),
-        ('tipo_doc',          'TEXT DEFAULT "Factura"'),
-        ('fuente',            'TEXT DEFAULT "llm"'),
-        ('estado',            'TEXT DEFAULT "pendiente"'),
-        ('comentario_estado', 'TEXT'),
-        ('fecha_estado',      'TEXT'),
-    ]
-    for col, tipo in nuevas_columnas:
-        try:
-            conn.execute(f'ALTER TABLE facturas ADD COLUMN {col} {tipo}')
-            conn.commit()
-        except sqlite3.OperationalError:
-            pass  # columna ya existe
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS facturas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                archivo TEXT UNIQUE,
+                hash TEXT UNIQUE,
+                proveedor TEXT,
+                ruc TEXT,
+                receptor TEXT,
+                ruc_receptor TEXT,
+                fecha TEXT,
+                monto_total REAL,
+                subtotal REAL,
+                itbms REAL,
+                moneda TEXT,
+                descripcion TEXT,
+                categoria TEXT DEFAULT "Otros",
+                confianza INTEGER DEFAULT 70,
+                modelo_usado TEXT,
+                notas TEXT,
+                cufe TEXT,
+                tipo_doc TEXT DEFAULT "Factura",
+                fuente TEXT DEFAULT "llm",
+                estado TEXT DEFAULT "pendiente",
+                comentario_estado TEXT,
+                fecha_estado TEXT,
+                fecha_procesamiento TEXT
+            )
+        ''')
+        nuevas_columnas = [
+            ('categoria',         'TEXT DEFAULT "Otros"'),
+            ('receptor',          'TEXT'),
+            ('ruc_receptor',      'TEXT'),
+            ('subtotal',          'REAL'),
+            ('itbms',             'REAL'),
+            ('cufe',              'TEXT'),
+            ('tipo_doc',          'TEXT DEFAULT "Factura"'),
+            ('fuente',            'TEXT DEFAULT "llm"'),
+            ('estado',            'TEXT DEFAULT "pendiente"'),
+            ('comentario_estado', 'TEXT'),
+            ('fecha_estado',      'TEXT'),
+        ]
+        for col, tipo in nuevas_columnas:
+            try:
+                conn.execute(f'ALTER TABLE facturas ADD COLUMN {col} {tipo}')
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
 # ─────────────────────────────────────────
+# EXCEL con openpyxl puro (sin pandas)
+# ─────────────────────────────────────────
+COLUMNAS_EXCEL = [
+    ("archivo",            "Archivo"),
+    ("proveedor",          "Proveedor"),
+    ("ruc",                "RUC"),
+    ("receptor",           "Receptor"),
+    ("ruc_receptor",       "RUC Receptor"),
+    ("fecha",              "Fecha"),
+    ("monto_total",        "Monto Total"),
+    ("subtotal",           "Subtotal"),
+    ("itbms",              "ITBMS"),
+    ("moneda",             "Moneda"),
+    ("categoria",          "Categoría"),
+    ("tipo_doc",           "Tipo Documento"),
+    ("estado",             "Estado"),
+    ("comentario_estado",  "Comentario"),
+    ("descripcion",        "Descripción"),
+    ("cufe",               "CUFE"),
+    ("fuente",             "Fuente"),
+    ("confianza",          "Confianza %"),
+    ("modelo_usado",       "Modelo"),
+    ("fecha_procesamiento","Fecha Procesado"),
+]
+
 def exportar_excel(db_path, excel_path):
     try:
-        conn = sqlite3.connect(db_path)
-        df = pd.read_sql_query("""
-            SELECT 
-                archivo as Archivo,
-                proveedor as Proveedor,
-                ruc as RUC,
-                receptor as Receptor,
-                ruc_receptor as RUC_Receptor,
-                fecha as Fecha,
-                monto_total as Monto_Total,
-                subtotal as Subtotal,
-                itbms as ITBMS,
-                moneda as Moneda,
-                categoria as Categoria,
-                tipo_doc as Tipo_Documento,
-                estado as Estado,
-                comentario_estado as Comentario,
-                descripcion as Descripcion,
-                cufe as CUFE,
-                fuente as Fuente,
-                confianza as Confianza,
-                modelo_usado as Modelo,
-                fecha_procesamiento as Fecha_Procesado
-            FROM facturas 
-            ORDER BY fecha_procesamiento DESC
-        """, conn)
-        conn.close()
-        df.to_excel(excel_path, index=False, engine='openpyxl')
-        return len(df)
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cols_sql = ", ".join(c[0] for c in COLUMNAS_EXCEL)
+            rows = conn.execute(
+                f"SELECT {cols_sql} FROM facturas ORDER BY fecha_procesamiento DESC"
+            ).fetchall()
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Facturas"
+
+        # Cabecera con estilo
+        header_fill = PatternFill("solid", fgColor="00E5C3")
+        header_font = Font(bold=True, color="030F0D")
+        for col_idx, (_, label) in enumerate(COLUMNAS_EXCEL, 1):
+            cell = ws.cell(row=1, column=col_idx, value=label)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+
+        # Datos
+        for row_idx, row in enumerate(rows, 2):
+            for col_idx, (field, _) in enumerate(COLUMNAS_EXCEL, 1):
+                ws.cell(row=row_idx, column=col_idx, value=row[field])
+
+        # Ancho automático
+        for col in ws.columns:
+            max_len = max((len(str(c.value or "")) for c in col), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+
+        wb.save(excel_path)
+        return len(rows)
     except Exception as e:
         logging.error(f"Error Excel: {e}")
         return 0
@@ -197,48 +225,56 @@ def exportar_excel(db_path, excel_path):
 
 def exportar_dgi_csv(db_path, csv_path, periodo=None):
     """
-    Genera el CSV con el formato requerido por la DGI Panamá
-    para declaración de compras (Formulario 43 / Anexo de compras).
-    Columnas requeridas: RUC_Proveedor, Nombre_Proveedor, Tipo_Doc,
-    Numero_Doc, Fecha, Subtotal, ITBMS; Total
-    Solo incluye facturas con estado 'aprobada'.
+    CSV formato DGI Panamá — solo facturas aprobadas.
     """
     try:
-        conn = sqlite3.connect(db_path)
-        query = """
-            SELECT
-                ruc          AS RUC_Proveedor,
-                proveedor    AS Nombre_Proveedor,
-                tipo_doc     AS Tipo_Documento,
-                archivo      AS Numero_Documento,
-                cufe         AS CUFE,
-                fecha        AS Fecha_Emision,
-                COALESCE(subtotal, monto_total - COALESCE(itbms, 0)) AS Subtotal,
-                COALESCE(itbms, 0)   AS ITBMS_7pct,
-                monto_total  AS Total_Factura,
-                moneda       AS Moneda,
-                categoria    AS Categoria
-            FROM facturas
-            WHERE estado = 'aprobada'
-        """
-        params = []
-        if periodo:
-            query += " AND fecha LIKE ?"
-            params.append(f"{periodo}%")
-        query += " ORDER BY fecha ASC"
+        with sqlite3.connect(db_path) as conn:
+            query = """
+                SELECT
+                    ruc          AS RUC_Proveedor,
+                    proveedor    AS Nombre_Proveedor,
+                    tipo_doc     AS Tipo_Documento,
+                    archivo      AS Numero_Documento,
+                    cufe         AS CUFE,
+                    fecha        AS Fecha_Emision,
+                    COALESCE(subtotal, monto_total - COALESCE(itbms, 0)) AS Subtotal,
+                    COALESCE(itbms, 0) AS ITBMS_7pct,
+                    monto_total  AS Total_Factura,
+                    moneda       AS Moneda,
+                    categoria    AS Categoria
+                FROM facturas
+                WHERE estado = 'aprobada'
+            """
+            params = []
+            if periodo:
+                query += " AND fecha LIKE ?"
+                params.append(f"{periodo}%")
+            query += " ORDER BY fecha ASC"
 
-        df = pd.read_sql_query(query, conn, params=params)
-        conn.close()
+            rows = conn.execute(query, params).fetchall()
+            if not rows:
+                return 0
 
-        if df.empty:
-            return 0
+            cols = ["RUC_Proveedor", "Nombre_Proveedor", "Tipo_Documento",
+                    "Numero_Documento", "CUFE", "Fecha_Emision",
+                    "Subtotal", "ITBMS_7pct", "Total_Factura", "Moneda", "Categoria"]
 
-        # Formatear montos con 2 decimales
-        for col in ['Subtotal', 'ITBMS_7pct', 'Total_Factura']:
-            df[col] = df[col].apply(lambda x: f"{float(x or 0):.2f}")
+        import csv
+        with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            writer.writerow(cols)
+            for row in rows:
+                # Formatear montos
+                formatted = list(row)
+                for i, col in enumerate(cols):
+                    if col in ("Subtotal", "ITBMS_7pct", "Total_Factura"):
+                        try:
+                            formatted[i] = f"{float(row[i] or 0):.2f}"
+                        except (TypeError, ValueError):
+                            formatted[i] = "0.00"
+                writer.writerow(formatted)
 
-        df.to_csv(csv_path, index=False, encoding='utf-8-sig')  # utf-8-sig para Excel en Windows
-        return len(df)
+        return len(rows)
     except Exception as e:
         logging.error(f"Error exportando CSV DGI: {e}")
         return 0
@@ -256,22 +292,15 @@ def mover_archivo(ruta_origen, carpeta_destino):
             return True
         except PermissionError:
             time.sleep(1.5)
-        except:
+        except Exception:
             return False
     return False
 
 # ─────────────────────────────────────────
 def extraer_datos_xml_etax(ruta_archivo):
-    """
-    Parsea XMLs de factura electrónica e-Tax 2.0 de la DGI Panamá.
-    Retorna dict con campos ya estructurados (sin necesidad de LLM).
-    Namespaces comunes de e-Tax 2.0: urn:oasis:names:specification:ubl:schema:xsd:Invoice-2
-    """
     try:
         tree = ET.parse(ruta_archivo)
         root = tree.getroot()
-
-        # Namespaces usados por e-Tax 2.0 / UBL 2.1
         ns = {
             'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
             'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
@@ -282,53 +311,40 @@ def extraer_datos_xml_etax(ruta_archivo):
             el = root.find(path, ns)
             return el.text.strip() if el is not None and el.text else default
 
-        # CUFE (Código Único de Factura Electrónica)
-        cufe = find_text('.//cbc:UUID') or find_text('.//cbc:ID')
-
-        # Datos del emisor (proveedor)
-        proveedor = find_text('.//cac:AccountingSupplierParty//cbc:RegistrationName') or \
-                    find_text('.//cac:AccountingSupplierParty//cbc:Name')
-        ruc = find_text('.//cac:AccountingSupplierParty//cbc:CompanyID') or \
-              find_text('.//cac:AccountingSupplierParty//cbc:ID')
-
-        # Datos del receptor (cliente)
-        receptor = find_text('.//cac:AccountingCustomerParty//cbc:RegistrationName') or \
-                   find_text('.//cac:AccountingCustomerParty//cbc:Name')
+        cufe     = find_text('.//cbc:UUID') or find_text('.//cbc:ID')
+        proveedor = (find_text('.//cac:AccountingSupplierParty//cbc:RegistrationName') or
+                     find_text('.//cac:AccountingSupplierParty//cbc:Name'))
+        ruc      = (find_text('.//cac:AccountingSupplierParty//cbc:CompanyID') or
+                    find_text('.//cac:AccountingSupplierParty//cbc:ID'))
+        receptor = (find_text('.//cac:AccountingCustomerParty//cbc:RegistrationName') or
+                    find_text('.//cac:AccountingCustomerParty//cbc:Name'))
         ruc_receptor = find_text('.//cac:AccountingCustomerParty//cbc:CompanyID')
+        fecha    = find_text('.//cbc:IssueDate')
 
-        # Fecha
-        fecha = find_text('.//cbc:IssueDate')
-
-        # Montos
-        monto_total_str = find_text('.//cac:LegalMonetaryTotal//cbc:PayableAmount') or \
-                          find_text('.//cbc:TaxInclusiveAmount')
-        subtotal_str    = find_text('.//cac:LegalMonetaryTotal//cbc:TaxExclusiveAmount') or \
-                          find_text('.//cac:LegalMonetaryTotal//cbc:LineExtensionAmount')
+        monto_total_str = (find_text('.//cac:LegalMonetaryTotal//cbc:PayableAmount') or
+                           find_text('.//cbc:TaxInclusiveAmount'))
+        subtotal_str    = (find_text('.//cac:LegalMonetaryTotal//cbc:TaxExclusiveAmount') or
+                           find_text('.//cac:LegalMonetaryTotal//cbc:LineExtensionAmount'))
         itbms_str       = find_text('.//cac:TaxTotal//cbc:TaxAmount')
+        moneda          = find_text('.//cbc:DocumentCurrencyCode') or 'USD'
 
-        moneda = find_text('.//cbc:DocumentCurrencyCode') or 'USD'
-
-        # Tipo de documento
         tipo_doc_map = {'01': 'Factura', '02': 'Nota de Crédito', '03': 'Nota de Débito',
                         '04': 'Factura de Importación', '08': 'Factura de Exportación'}
         tipo_cod = find_text('.//cbc:InvoiceTypeCode')
         tipo_doc = tipo_doc_map.get(tipo_cod, f'Documento {tipo_cod}')
 
-        # Descripción (primer ítem)
-        descripcion = find_text('.//cac:InvoiceLine//cbc:Description') or \
-                      find_text('.//cac:InvoiceLine//cbc:Name') or \
-                      f'{tipo_doc} electrónica'
+        descripcion = (find_text('.//cac:InvoiceLine//cbc:Description') or
+                       find_text('.//cac:InvoiceLine//cbc:Name') or
+                       f'{tipo_doc} electrónica')
 
         try:
             monto_total = float(monto_total_str)
         except (ValueError, TypeError):
             monto_total = 0.0
-
         try:
             itbms = float(itbms_str)
         except (ValueError, TypeError):
             itbms = 0.0
-
         try:
             subtotal = float(subtotal_str)
         except (ValueError, TypeError):
@@ -351,12 +367,11 @@ def extraer_datos_xml_etax(ruta_archivo):
             'descripcion':  descripcion,
             'cufe':         cufe,
             'tipo_doc':     tipo_doc,
-            'confianza':    100,   # datos estructurados = confianza total
+            'confianza':    100,
             'categoria':    'Otros',
             'notas':        f'e-Tax 2.0 | CUFE: {cufe}',
             'fuente':       'xml_etax',
         }
-
     except ET.ParseError as e:
         logging.error(f"XML inválido {ruta_archivo}: {e}")
         return None
@@ -379,37 +394,40 @@ def extraer_texto(ruta_archivo):
                     texto += f"\n--- Pagina {i+1} ---\n" + (page.extract_text() or "")
             return texto
         elif ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(ruta_archivo)
-            return df.to_string(index=False)
+            # Sin pandas: openpyxl directo
+            wb = openpyxl.load_workbook(ruta_archivo, read_only=True, data_only=True)
+            lineas = []
+            for ws in wb.worksheets:
+                for row in ws.iter_rows(values_only=True):
+                    linea = "\t".join(str(c) if c is not None else "" for c in row)
+                    if linea.strip():
+                        lineas.append(linea)
+            wb.close()
+            return "\n".join(lineas)
     except Exception as e:
         logging.error(f"Error leyendo {ruta_archivo}: {e}")
     return None
 
 # ─────────────────────────────────────────
 def validar_resultado(datos):
-    """Verifica que el JSON tenga los campos mínimos necesarios"""
     if not isinstance(datos, dict):
         return False
     for campo in CAMPOS_OBLIGATORIOS:
         if not datos.get(campo):
-            logging.warning(f"Campo obligatorio faltante o vacio: {campo}")
+            logging.warning(f"Campo obligatorio faltante: {campo}")
             return False
-    # Verificar que monto_total sea un número válido
     try:
         float(datos["monto_total"])
     except (ValueError, TypeError):
-        logging.warning(f"monto_total no es un numero valido: {datos.get('monto_total')}")
+        logging.warning(f"monto_total no es número: {datos.get('monto_total')}")
         return False
     return True
 
 def parsear_json_respuesta(content):
-    # Eliminar bloques <think>...</think> de Qwen3
     if "<think>" in content:
         fin_think = content.find("</think>")
         if fin_think != -1:
             content = content[fin_think + len("</think>"):].strip()
-
-    # Limpiar bloques de código markdown
     if "```" in content:
         partes = content.split("```")
         for parte in partes:
@@ -417,19 +435,15 @@ def parsear_json_respuesta(content):
             if "{" in parte:
                 content = parte
                 break
-
     inicio = content.find("{")
-    fin = content.rfind("}") + 1
+    fin    = content.rfind("}") + 1
     if inicio == -1 or fin <= inicio:
         return None
-
-    content = content[inicio:fin]
-    return json.loads(content)
+    return json.loads(content[inicio:fin])
 
 # ─────────────────────────────────────────
 def llamar_ia(texto):
-    texto_limpio = texto[:15000].replace('"', "'")
-    texto_limpio = texto_limpio.replace('\\', '/')
+    texto_limpio = texto[:15000].replace('"', "'").replace('\\', '/')
 
     prompt = (
         "Eres un asistente contable experto en facturas de Panama y Latinoamerica.\n"
@@ -460,7 +474,6 @@ def llamar_ia(texto):
             nombre = model.split('/')[1].split(':')[0]
             print(f"   Probando {nombre}...", end=" ", flush=True)
 
-            # Pausa entre modelos para evitar rate limiting
             if i > 0:
                 time.sleep(0.5)
 
@@ -486,28 +499,24 @@ def llamar_ia(texto):
             with urllib.request.urlopen(req, timeout=20) as resp:
                 result = json.loads(resp.read().decode())
 
-                # Verificar que la respuesta tiene el formato esperado
                 if "choices" not in result or not result["choices"]:
-                    print(f"respuesta vacia")
-                    logging.warning(f"{nombre}: respuesta sin choices")
+                    print("respuesta vacia")
                     continue
 
                 content = result["choices"][0]["message"]["content"].strip()
-
                 if not content:
                     print("contenido vacio")
                     continue
 
                 datos = parsear_json_respuesta(content)
-
                 if datos is None:
                     print("JSON invalido")
-                    logging.warning(f"{nombre}: no se pudo parsear JSON. Respuesta: {content[:200]}")
+                    logging.warning(f"{nombre}: no se pudo parsear JSON")
                     continue
 
                 if not validar_resultado(datos):
                     print("campos incompletos")
-                    logging.warning(f"{nombre}: campos obligatorios faltantes. Datos: {datos}")
+                    logging.warning(f"{nombre}: campos obligatorios faltantes")
                     continue
 
                 print(f"OK (confianza: {datos.get('confianza', '?')}%)")
@@ -517,19 +526,15 @@ def llamar_ia(texto):
         except urllib.error.HTTPError as e:
             print(f"HTTP {e.code}")
             logging.warning(f"{nombre}: HTTP error {e.code}")
-            continue
         except urllib.error.URLError as e:
-            print(f"conexion fallida")
+            print("conexion fallida")
             logging.warning(f"{nombre}: URL error {e.reason}")
-            continue
         except json.JSONDecodeError as e:
-            print(f"JSON error")
+            print("JSON error")
             logging.warning(f"{nombre}: JSON decode error {e}")
-            continue
         except Exception as e:
             print(f"error: {e}")
             logging.warning(f"{nombre}: error inesperado {e}")
-            continue
 
     logging.error("Todos los modelos fallaron para esta factura")
     return None, None
@@ -540,38 +545,37 @@ def guardar_factura(db_path, datos, archivo, modelo):
     if categoria not in CATEGORIAS_VALIDAS:
         categoria = 'Otros'
 
-    conn = sqlite3.connect(db_path)
     try:
-        conn.execute('''
-            INSERT INTO facturas 
-            (archivo, hash, proveedor, ruc, receptor, ruc_receptor, fecha,
-             monto_total, subtotal, itbms, moneda, descripcion, categoria,
-             confianza, modelo_usado, notas, cufe, tipo_doc, fuente,
-             estado, fecha_procesamiento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?)
-        ''', (
-            archivo,
-            datos.get('hash'),
-            datos.get('proveedor'),
-            datos.get('ruc'),
-            datos.get('receptor'),
-            datos.get('ruc_receptor'),
-            datos.get('fecha'),
-            float(datos.get('monto_total', 0)),
-            float(datos.get('subtotal', 0)) if datos.get('subtotal') else None,
-            float(datos.get('itbms', 0)) if datos.get('itbms') else None,
-            datos.get('moneda', 'USD'),
-            datos.get('descripcion'),
-            categoria,
-            int(datos.get('confianza', 70)),
-            modelo,
-            datos.get('notas'),
-            datos.get('cufe'),
-            datos.get('tipo_doc', 'Factura'),
-            datos.get('fuente', 'llm'),
-            datetime.now().isoformat()
-        ))
-        conn.commit()
+        with sqlite3.connect(db_path) as conn:
+            conn.execute('''
+                INSERT INTO facturas
+                (archivo, hash, proveedor, ruc, receptor, ruc_receptor, fecha,
+                 monto_total, subtotal, itbms, moneda, descripcion, categoria,
+                 confianza, modelo_usado, notas, cufe, tipo_doc, fuente,
+                 estado, fecha_procesamiento)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                archivo,
+                datos.get('hash'),
+                datos.get('proveedor'),
+                datos.get('ruc'),
+                datos.get('receptor'),
+                datos.get('ruc_receptor'),
+                datos.get('fecha'),
+                float(datos.get('monto_total', 0)),
+                float(datos.get('subtotal', 0)) if datos.get('subtotal') else None,
+                float(datos.get('itbms', 0))    if datos.get('itbms')    else None,
+                datos.get('moneda', 'USD'),
+                datos.get('descripcion'),
+                categoria,
+                int(datos.get('confianza', 70)),
+                modelo,
+                datos.get('notas'),
+                datos.get('cufe'),
+                datos.get('tipo_doc', 'Factura'),
+                datos.get('fuente', 'llm'),
+                datetime.now().isoformat()
+            ))
         return True
     except sqlite3.IntegrityError:
         logging.warning(f"Factura duplicada: {archivo}")
@@ -579,8 +583,6 @@ def guardar_factura(db_path, datos, archivo, modelo):
     except Exception as e:
         logging.error(f"Error guardando factura {archivo}: {e}")
         return False
-    finally:
-        conn.close()
 
 # ─────────────────────────────────────────
 def procesar_cliente(nombre_cliente, procesadas):
@@ -606,11 +608,10 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         file_hash = get_file_hash(ruta)
 
-        conn = sqlite3.connect(rutas["db"])
-        existe = conn.execute(
-            "SELECT 1 FROM facturas WHERE hash=?", (file_hash,)
-        ).fetchone()
-        conn.close()
+        with sqlite3.connect(rutas["db"]) as conn:
+            existe = conn.execute(
+                "SELECT 1 FROM facturas WHERE hash=?", (file_hash,)
+            ).fetchone()
 
         if existe:
             print("   Duplicada, ignorando")
@@ -621,7 +622,6 @@ def procesar_cliente(nombre_cliente, procesadas):
         resultado = None
         modelo    = None
 
-        # ── XML e-Tax 2.0: parse directo, sin LLM ──────────────────
         if ext == ".xml":
             resultado = extraer_datos_xml_etax(ruta)
             if resultado:
@@ -633,8 +633,6 @@ def procesar_cliente(nombre_cliente, procesadas):
                 mover_archivo(ruta, rutas["error"])
                 procesadas.add(clave(archivo))
                 continue
-
-        # ── PDF / TXT / XLSX: extracción de texto + LLM ────────────
         else:
             texto = extraer_texto(ruta)
             if not texto or len(texto.strip()) < 20:
@@ -650,10 +648,9 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         if resultado:
             if guardar_factura(rutas["db"], resultado, archivo, modelo):
-                total = exportar_excel(rutas["db"], rutas["excel"])
                 fuente_tag = "🧾 e-Tax XML" if ext == ".xml" else f"🤖 {modelo}"
                 print(f"   OK: {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')} | {fuente_tag}")
-                logging.info(f"OK: {archivo} | {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')}")
+                logging.info(f"OK: {archivo} | {resultado.get('proveedor')} | {resultado.get('monto_total')}")
                 enviar_telegram(
                     f"{'🧾' if ext == '.xml' else '📄'} Factura procesada\n"
                     f"Cliente: {nombre_cliente}\n"
@@ -662,8 +659,7 @@ def procesar_cliente(nombre_cliente, procesadas):
                     f"Proveedor: {resultado.get('proveedor')}\n"
                     f"Categoría: {resultado.get('categoria', 'Otros')}\n"
                     f"Monto: {resultado.get('monto_total')} {resultado.get('moneda')}\n"
-                    f"Confianza: {resultado.get('confianza')}%\n"
-                    f"Total en DB: {total} facturas"
+                    f"Confianza: {resultado.get('confianza')}%"
                 )
                 mover_archivo(ruta, rutas["procesados"])
             else:
@@ -682,31 +678,24 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         procesadas.add(clave(archivo))
 
+    # Exportar Excel UNA SOLA VEZ al terminar el lote (no dentro del loop)
+    exportar_excel(rutas["db"], rutas["excel"])
+
 # ─────────────────────────────────────────
 def main():
     os.makedirs(CARPETA_CLIENTES, exist_ok=True)
-
     print("=" * 60)
     print("  SISTEMA MULTI-CLIENTE DE FACTURAS")
     print("=" * 60)
-    print(f"  Clientes en: {CARPETA_CLIENTES}")
-    print("  Para agregar un cliente, crea una carpeta con su nombre")
-    print("  (Ctrl+C para detener)")
-    print("=" * 60)
-
     enviar_telegram("Sistema multi-cliente iniciado")
-
     procesadas = set()
-
     while True:
         clientes = listar_clientes()
-
         if not clientes:
             print(" Sin clientes aun. Crea una carpeta en ./clientes/", end="\r")
         else:
             for cliente in clientes:
                 procesar_cliente(cliente, procesadas)
-
         time.sleep(15)
 
 

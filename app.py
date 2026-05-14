@@ -2,28 +2,24 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 import os
+import re
 import threading
 import time
-import pandas as pd
 from dotenv import load_dotenv
 
 from models import User, db_init
 from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
 
-# ── Cargar variables de entorno ──────────────────────────────
 load_dotenv()
 
 app = Flask(__name__)
 
-# FIX 1: secret_key viene del .env, nunca hardcodeado
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("FLASK_SECRET_KEY no está configurado en .env")
 
-# FIX 2: limite de tamaño de archivos — 10 MB máximo
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
-# FIX 3: extensiones permitidas
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml'}
 
 def allowed_file(filename):
@@ -42,20 +38,15 @@ def load_user(user_id):
 
 db_init()
 
-# FIX 4: ADMIN_SECRET viene del .env
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
 
-# ── Estado de jobs en background (en memoria, por usuario) ───
-# { nombre_cliente: {"status": "processing"|"done"|"error", "msg": "...", "ts": float} }
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
 
 def _run_background(nombre_cliente, archivos_guardados):
-    """Corre procesar_cliente en un thread separado y actualiza _jobs."""
     with _jobs_lock:
         _jobs[nombre_cliente] = {"status": "processing", "msg": "Procesando...", "ts": time.time()}
     try:
-        from facturas_processor import procesar_cliente
         procesar_cliente(nombre_cliente, set())
         with _jobs_lock:
             _jobs[nombre_cliente] = {
@@ -73,8 +64,8 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
-        email    = request.form.get("email")
-        password = request.form.get("password")
+        email    = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
         if User.check_password(email, password):
             user = User.get_by_email(email)
             login_user(user)
@@ -90,9 +81,9 @@ def register():
     if not ADMIN_SECRET or admin_key != ADMIN_SECRET:
         return redirect(url_for("index"))
     if request.method == "POST":
-        nombre   = request.form.get("nombre")
-        email    = request.form.get("email")
-        password = request.form.get("password")
+        nombre   = request.form.get("nombre", "").strip()
+        email    = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
         if User.exists(email):
             flash("Este correo ya está registrado", "danger")
             return redirect(url_for("register", key=admin_key))
@@ -107,8 +98,8 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
-        email    = request.form.get("email")
-        password = request.form.get("password")
+        email    = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
         if User.check_password(email, password):
             user = User.get_by_email(email)
             login_user(user)
@@ -125,27 +116,25 @@ def dashboard():
     facturas = []
     if os.path.exists(rutas["db"]):
         try:
-            conn = _sq.connect(rutas["db"])
-            conn.row_factory = _sq.Row
-            rows = conn.execute("""
-                SELECT id, archivo AS Archivo, proveedor AS Proveedor,
-                       ruc AS RUC, fecha AS Fecha,
-                       monto_total AS Monto_Total, subtotal AS Subtotal,
-                       itbms AS ITBMS, moneda AS Moneda,
-                       categoria AS Categoria, tipo_doc AS Tipo_Documento,
-                       fuente AS Fuente, confianza AS Confianza,
-                       estado AS Estado,
-                       comentario_estado AS Comentario_Estado,
-                       descripcion AS Descripcion, cufe AS CUFE,
-                       fecha_procesamiento AS Fecha_Procesado
-                FROM facturas ORDER BY fecha_procesamiento DESC
-            """).fetchall()
-            facturas = [dict(r) for r in rows]
-            conn.close()
+            with _sq.connect(rutas["db"]) as conn:
+                conn.row_factory = _sq.Row
+                rows = conn.execute("""
+                    SELECT id, archivo AS Archivo, proveedor AS Proveedor,
+                           ruc AS RUC, fecha AS Fecha,
+                           monto_total AS Monto_Total, subtotal AS Subtotal,
+                           itbms AS ITBMS, moneda AS Moneda,
+                           categoria AS Categoria, tipo_doc AS Tipo_Documento,
+                           fuente AS Fuente, confianza AS Confianza,
+                           estado AS Estado,
+                           comentario_estado AS Comentario_Estado,
+                           descripcion AS Descripcion, cufe AS CUFE,
+                           fecha_procesamiento AS Fecha_Procesado
+                    FROM facturas ORDER BY fecha_procesamiento DESC
+                """).fetchall()
+                facturas = [dict(r) for r in rows]
         except Exception:
             pass
     return render_template("dashboard.html", user=current_user, facturas=facturas)
-
 
 # ── APROBAR / RECHAZAR / REVISAR FACTURA ─────────────────────
 @app.route("/factura/estado", methods=["POST"])
@@ -154,9 +143,15 @@ def actualizar_estado():
     import sqlite3
     from datetime import datetime
 
-    factura_id  = request.form.get("factura_id")
+    # Validar factura_id como entero
+    try:
+        factura_id = int(request.form.get("factura_id"))
+    except (TypeError, ValueError):
+        flash("ID de factura inválido", "danger")
+        return redirect(url_for("dashboard"))
+
     nuevo_estado = request.form.get("estado")
-    comentario  = request.form.get("comentario", "")
+    comentario   = request.form.get("comentario", "")
 
     estados_validos = {"aprobada", "en_revision", "rechazada", "pendiente"}
     if nuevo_estado not in estados_validos:
@@ -168,40 +163,40 @@ def actualizar_estado():
         flash("Sin datos aún", "warning")
         return redirect(url_for("dashboard"))
 
-    conn = sqlite3.connect(rutas["db"])
-    conn.execute("""
-        UPDATE facturas
-        SET estado = ?, comentario_estado = ?, fecha_estado = ?
-        WHERE id = ?
-    """, (nuevo_estado, comentario, datetime.now().isoformat(), factura_id))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(rutas["db"]) as conn:
+        conn.execute("""
+            UPDATE facturas
+            SET estado = ?, comentario_estado = ?, fecha_estado = ?
+            WHERE id = ?
+        """, (nuevo_estado, comentario, datetime.now().isoformat(), factura_id))
 
-    # Re-exportar Excel con estado actualizado
     from facturas_processor import exportar_excel
     exportar_excel(rutas["db"], rutas["excel"])
 
-    etiquetas = {"aprobada": "aprobada ✓", "en_revision": "en revisión", "rechazada": "rechazada ✗", "pendiente": "pendiente"}
+    etiquetas = {"aprobada": "aprobada ✓", "en_revision": "en revisión",
+                 "rechazada": "rechazada ✗", "pendiente": "pendiente"}
     flash(f"Factura marcada como {etiquetas.get(nuevo_estado, nuevo_estado)}", "success")
     return redirect(url_for("dashboard"))
-
 
 # ── DOWNLOAD CSV DGI ─────────────────────────────────────────
 @app.route("/download-dgi")
 @login_required
 def download_dgi():
-    import tempfile
-    periodo = request.args.get("periodo")  # e.g. "2026-04" para filtrar por mes
-    rutas = get_rutas_cliente(current_user.nombre)
+    periodo = request.args.get("periodo", "")
 
+    # Validar formato de periodo
+    if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
+        flash("Período inválido. Usa el formato YYYY-MM.", "danger")
+        return redirect(url_for("dashboard"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
     if not os.path.exists(rutas["db"]):
         flash("Aún no tienes facturas procesadas", "warning")
         return redirect(url_for("dashboard"))
 
-    # Guardar CSV temporal
-    sufijo = f"_{periodo}" if periodo else ""
+    sufijo   = f"_{periodo}" if periodo else ""
     csv_path = os.path.join(rutas["base"], f"declaracion_dgi{sufijo}.csv")
-    total = exportar_dgi_csv(rutas["db"], csv_path, periodo=periodo)
+    total    = exportar_dgi_csv(rutas["db"], csv_path, periodo=periodo or None)
 
     if total == 0:
         flash("No hay facturas aprobadas para exportar. Aprueba facturas primero.", "warning")
@@ -225,7 +220,7 @@ def upload():
     os.makedirs(rutas["procesados"], exist_ok=True)
     os.makedirs(rutas["error"],      exist_ok=True)
 
-    guardados = 0
+    guardados  = 0
     rechazados = 0
     for file in files:
         if file.filename == "":
@@ -242,7 +237,6 @@ def upload():
         flash(f"{rechazados} archivo(s) rechazados (solo PDF, TXT, XLSX, XML)", "warning")
 
     if guardados > 0:
-        # Lanzar procesamiento en background — el browser no espera
         t = threading.Thread(
             target=_run_background,
             args=(current_user.nombre, guardados),
@@ -253,8 +247,7 @@ def upload():
 
     return redirect(url_for("dashboard"))
 
-
-# ── ESTADO DEL JOB (polling desde el dashboard) ──────────────
+# ── ESTADO DEL JOB ───────────────────────────────────────────
 @app.route("/upload/status")
 @login_required
 def upload_status():
@@ -281,6 +274,5 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# FIX 6: debug=False — NUNCA True en producción
 if __name__ == "__main__":
     app.run(debug=False)
