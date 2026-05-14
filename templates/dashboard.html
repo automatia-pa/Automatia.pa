@@ -223,6 +223,9 @@
   <div class="upload-section">
     <h2>Subir Facturas</h2>
     <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
+    {{ form.hidden_tag() if form else '' }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
       <div class="upload-zone" id="dropZone">
         <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls,.xml" id="fileInput">
         <div class="upload-icon">&#128196;</div>
@@ -334,6 +337,9 @@
       <button onclick="cerrarModal()" class="modal-close">✕</button>
     </div>
     <form method="POST" action="/factura/estado" id="modalForm">
+    {{ form.hidden_tag() if form else '' }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
       <input type="hidden" name="factura_id" id="modalFacturaId">
       <div class="modal-estados">
         <label class="estado-opcion" data-estado="aprobada">
