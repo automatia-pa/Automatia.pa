@@ -16,12 +16,9 @@ import re
 import PyPDF2
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # ─────────────────────────────────────────
-# CONFIGURACION
+# CONFIGURACION - SIN load_dotenv()
 # ─────────────────────────────────────────
 API_KEY          = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
