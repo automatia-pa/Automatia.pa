@@ -2,8 +2,8 @@ import sqlite3
 import threading
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-
-DB_PATH = "users.db"
+import os
+DB_PATH = os.path.expanduser("~/.private_data/users.db")
 
 # ── Pool de conexiones por thread (thread-local storage) ──────
 # check_same_thread=False es inseguro en producción si se comparte una misma
