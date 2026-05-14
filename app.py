@@ -6,10 +6,18 @@ import re
 import threading
 import time
 from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 
 from models import User, db_init
 from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
-
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://"
+)
 load_dotenv()
 
 app = Flask(__name__)
