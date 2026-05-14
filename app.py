@@ -8,7 +8,7 @@ import time
 import secrets
 from datetime import timedelta
 from collections import defaultdict
-import magic  # Nueva librería para validar archivos
+
 
 from models import User, db_init
 from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
@@ -28,39 +28,15 @@ app.config['SESSION_COOKIE_NAME'] = '__Host-session'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
 
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml'}
-ALLOWED_MIME_TYPES = {
-    'application/pdf',
-    'text/plain',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-excel',
-    'text/xml',
-    'application/xml'
-}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def is_safe_file(file_storage):
-    """Validación de seguridad mejorada"""
+    """Validación básica de archivos (sin magic por ahora)"""
     if not file_storage or not file_storage.filename:
         return False
-    if not allowed_file(file_storage.filename):
-        return False
-    
-    try:
-        file_storage.stream.seek(0)
-        header = file_storage.stream.read(2048)
-        file_storage.stream.seek(0)
-        
-        mime_type = magic.from_buffer(header, mime=True)
-        if mime_type not in ALLOWED_MIME_TYPES:
-            logging.warning(f"Archivo con MIME no permitido: {mime_type} - {file_storage.filename}")
-            return False
-    except Exception as e:
-        logging.error(f"Error validando archivo {file_storage.filename}: {e}")
-        return False
-    
-    return True
+    return allowed_file(file_storage.filename)
 
 # ── FLASK-LOGIN y resto de configuración (se mantiene igual) ──
 login_manager = LoginManager()
@@ -423,4 +399,5 @@ def logout():
 
 if __name__ == "__main__":
     app.run(debug=False)
+
 
