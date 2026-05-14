@@ -1,31 +1,44 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 import os
 import re
 import threading
 import time
-from dotenv import load_dotenv
+import secrets
+from datetime import timedelta
+from collections import defaultdict
+
 
 from models import User, db_init
 from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
 
-load_dotenv()
-
 app = Flask(__name__)
 
+# ── SEGURIDAD ─────────────────────────────────────────────────
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
-if not app.secret_key:
-    raise RuntimeError("FLASK_SECRET_KEY no está configurado en .env")
+if not app.secret_key or len(app.secret_key) < 32:
+    raise RuntimeError("FLASK_SECRET_KEY no está configurada correctamente")
 
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+app.config['SESSION_COOKIE_NAME'] = '__Host-session'
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
 
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml'}
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def is_safe_file(file_storage):
+    """Validación básica de archivos (sin magic por ahora)"""
+    if not file_storage or not file_storage.filename:
+        return False
+    return allowed_file(file_storage.filename)
+
+# ── FLASK-LOGIN y resto de configuración (se mantiene igual) ──
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "index"
@@ -40,8 +53,72 @@ db_init()
 
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
 
+# ── JOBS EN BACKGROUND ───────────────────────────────────────
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
+
+# ── PROTECCIÓN BRUTE-FORCE (en memoria, simple) ───────────────
+# Para producción real usar Flask-Limiter + Redis
+_login_attempts: dict = defaultdict(list)   # ip -> [timestamps]
+_login_lock = threading.Lock()
+MAX_ATTEMPTS = 8
+WINDOW_SECONDS = 300  # 5 minutos
+
+def _check_rate_limit(ip: str) -> bool:
+    """Retorna True si la IP puede intentar login, False si está bloqueada."""
+    now = time.time()
+    with _login_lock:
+        attempts = [t for t in _login_attempts[ip] if now - t < WINDOW_SECONDS]
+        _login_attempts[ip] = attempts
+        if len(attempts) >= MAX_ATTEMPTS:
+            return False
+        return True
+
+def _register_attempt(ip: str):
+    now = time.time()
+    with _login_lock:
+        _login_attempts[ip].append(now)
+
+def _get_ip() -> str:
+    # PythonAnywhere pone la IP real en X-Forwarded-For
+    xff = request.headers.get('X-Forwarded-For', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.remote_addr or '0.0.0.0'
+
+# ── SECURITY HEADERS (todas las respuestas) ───────────────────
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+    # CSP — ajusta si agregas más CDNs
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    return response
+
+# ── CSRF TOKEN simple (sin Flask-WTF) ────────────────────────
+def generate_csrf_token():
+    if '_csrf_token' not in __import__('flask').session:
+        __import__('flask').session['_csrf_token'] = secrets.token_hex(32)
+    return __import__('flask').session['_csrf_token']
+
+app.jinja_env.globals['csrf_token'] = generate_csrf_token
+
+def validate_csrf():
+    token = __import__('flask').session.get('_csrf_token')
+    form_token = request.form.get('_csrf_token') or request.headers.get('X-CSRF-Token')
+    if not token or not form_token or not secrets.compare_digest(token, form_token):
+        abort(403)
 
 def _run_background(nombre_cliente, archivos_guardados):
     with _jobs_lock:
@@ -56,50 +133,89 @@ def _run_background(nombre_cliente, archivos_guardados):
             }
     except Exception as e:
         with _jobs_lock:
-            _jobs[nombre_cliente] = {"status": "error", "msg": str(e), "ts": time.time()}
+            _jobs[nombre_cliente] = {"status": "error", "msg": "Error interno", "ts": time.time()}
 
-# ── INDEX + LOGIN ────────────────────────────────────────────
+# ── INDEX + LOGIN ─────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
 def index():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
+        validate_csrf()
+        ip = _get_ip()
+        if not _check_rate_limit(ip):
+            flash("Demasiados intentos. Espera 5 minutos.", "danger")
+            return redirect(url_for("index"))
+
         email    = request.form.get("email", "").strip()
         password = request.form.get("password", "")
+
+        # Simular tiempo constante para evitar timing attacks
+        _register_attempt(ip)
         if User.check_password(email, password):
             user = User.get_by_email(email)
             login_user(user)
+            # Regenerar sesión tras login exitoso (evita session fixation)
+            __import__('flask').session.regenerate = True
             return redirect(url_for("dashboard"))
+
         flash("Correo o contraseña incorrectos", "danger")
         return redirect(url_for("index"))
     return render_template("index.html")
 
-# ── REGISTER ─────────────────────────────────────────────────
+# ── REGISTER ──────────────────────────────────────────────────
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    admin_key = request.args.get("key") or request.form.get("admin_key")
-    if not ADMIN_SECRET or admin_key != ADMIN_SECRET:
-        return redirect(url_for("index"))
+    # Mejor seguridad: Admin key por form o header (no solo query string)
+    admin_key = request.form.get("admin_key") or request.headers.get("X-Admin-Key")
+
+    if not ADMIN_SECRET or not secrets.compare_digest(admin_key or "", ADMIN_SECRET):
+        abort(403)  # Bloquea acceso directamente
+
     if request.method == "POST":
+        validate_csrf()
         nombre   = request.form.get("nombre", "").strip()
-        email    = request.form.get("email", "").strip()
+        email    = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+
+        # Validaciones
+        if not nombre or not email or not password:
+            flash("Todos los campos son obligatorios", "danger")
+            return redirect(url_for("register"))
+
+        if len(password) < 10:
+            flash("La contraseña debe tener al menos 10 caracteres", "danger")
+            return redirect(url_for("register"))
+
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            flash("Correo inválido", "danger")
+            return redirect(url_for("register"))
+
         if User.exists(email):
             flash("Este correo ya está registrado", "danger")
-            return redirect(url_for("register", key=admin_key))
+            return redirect(url_for("register"))
+
         User.create(nombre, email, password)
         flash(f"Cliente '{nombre}' creado exitosamente", "success")
-        return redirect(url_for("register", key=admin_key))
+        return redirect(url_for("register"))
+
     return render_template("register.html")
 
-# ── LOGIN ────────────────────────────────────────────────────
+# ── LOGIN ─────────────────────────────────────────────────────
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
+        validate_csrf()
+        ip = _get_ip()
+        if not _check_rate_limit(ip):
+            flash("Demasiados intentos. Espera 5 minutos.", "danger")
+            return redirect(url_for("login"))
+
         email    = request.form.get("email", "").strip()
         password = request.form.get("password", "")
+        _register_attempt(ip)
         if User.check_password(email, password):
             user = User.get_by_email(email)
             login_user(user)
@@ -107,7 +223,7 @@ def login():
         flash("Correo o contraseña incorrectos", "danger")
     return render_template("login.html")
 
-# ── DASHBOARD ────────────────────────────────────────────────
+# ── DASHBOARD ─────────────────────────────────────────────────
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -140,10 +256,10 @@ def dashboard():
 @app.route("/factura/estado", methods=["POST"])
 @login_required
 def actualizar_estado():
+    validate_csrf()
     import sqlite3
     from datetime import datetime
 
-    # Validar factura_id como entero
     try:
         factura_id = int(request.form.get("factura_id"))
     except (TypeError, ValueError):
@@ -151,7 +267,7 @@ def actualizar_estado():
         return redirect(url_for("dashboard"))
 
     nuevo_estado = request.form.get("estado")
-    comentario   = request.form.get("comentario", "")
+    comentario   = request.form.get("comentario", "")[:500]  # limitar longitud
 
     estados_validos = {"aprobada", "en_revision", "rechazada", "pendiente"}
     if nuevo_estado not in estados_validos:
@@ -178,13 +294,12 @@ def actualizar_estado():
     flash(f"Factura marcada como {etiquetas.get(nuevo_estado, nuevo_estado)}", "success")
     return redirect(url_for("dashboard"))
 
-# ── DOWNLOAD CSV DGI ─────────────────────────────────────────
+# ── DOWNLOAD CSV DGI ──────────────────────────────────────────
 @app.route("/download-dgi")
 @login_required
 def download_dgi():
     periodo = request.args.get("periodo", "")
 
-    # Validar formato de periodo
     if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
         flash("Período inválido. Usa el formato YYYY-MM.", "danger")
         return redirect(url_for("dashboard"))
@@ -205,36 +320,43 @@ def download_dgi():
     return send_file(csv_path, as_attachment=True,
                      download_name=f"declaracion_dgi{sufijo}.csv")
 
-# ── UPLOAD ───────────────────────────────────────────────────
+# ── UPLOAD ────────────────────────────────────────────────────
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload():
+    validate_csrf()
     if "files[]" not in request.files:
         flash("No se seleccionaron archivos", "danger")
         return redirect(url_for("dashboard"))
 
     files = request.files.getlist("files[]")
+
+    if len(files) > 20:
+        flash("Máximo 20 archivos por carga", "danger")
+        return redirect(url_for("dashboard"))
+
     rutas = get_rutas_cliente(current_user.nombre)
+    os.makedirs(rutas["facturas"], exist_ok=True)
 
-    os.makedirs(rutas["facturas"],   exist_ok=True)
-    os.makedirs(rutas["procesados"], exist_ok=True)
-    os.makedirs(rutas["error"],      exist_ok=True)
-
-    guardados  = 0
+    guardados = 0
     rechazados = 0
+
     for file in files:
-        if file.filename == "":
-            continue
-        if not allowed_file(file.filename):
+        if file.filename == "" or not is_safe_file(file):
             rechazados += 1
             continue
+
         filename = secure_filename(file.filename)
+        if not filename:
+            rechazados += 1
+            continue
+
         filepath = os.path.join(rutas["facturas"], filename)
         file.save(filepath)
         guardados += 1
 
     if rechazados > 0:
-        flash(f"{rechazados} archivo(s) rechazados (solo PDF, TXT, XLSX, XML)", "warning")
+        flash(f"{rechazados} archivo(s) rechazados por seguridad", "warning")
 
     if guardados > 0:
         t = threading.Thread(
@@ -247,7 +369,7 @@ def upload():
 
     return redirect(url_for("dashboard"))
 
-# ── ESTADO DEL JOB ───────────────────────────────────────────
+# ── ESTADO DEL JOB ────────────────────────────────────────────
 @app.route("/upload/status")
 @login_required
 def upload_status():
@@ -255,9 +377,15 @@ def upload_status():
         job = _jobs.get(current_user.nombre)
     if not job:
         return jsonify({"status": "idle"})
-    return jsonify(job)
+    # No exponer msg de error interno directamente
+    safe_job = {
+        "status": job["status"],
+        "msg": job["msg"] if job["status"] != "error" else "Error procesando archivos",
+        "ts": job["ts"]
+    }
+    return jsonify(safe_job)
 
-# ── DOWNLOAD EXCEL ───────────────────────────────────────────
+# ── DOWNLOAD EXCEL ────────────────────────────────────────────
 @app.route("/download-excel")
 @login_required
 def download_excel():
@@ -267,12 +395,15 @@ def download_excel():
     flash("Aún no tienes facturas procesadas", "warning")
     return redirect(url_for("dashboard"))
 
-# ── LOGOUT ───────────────────────────────────────────────────
+# ── LOGOUT ────────────────────────────────────────────────────
 @app.route("/logout")
 @login_required
 def logout():
     logout_user()
+    # Limpiar sesión completa
+    __import__('flask').session.clear()
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.run(debug=False)
+

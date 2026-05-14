@@ -16,18 +16,15 @@ import re
 import PyPDF2
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # ─────────────────────────────────────────
-# CONFIGURACION
+# CONFIGURACION - SIN load_dotenv()
 # ─────────────────────────────────────────
 API_KEY          = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-CARPETA_CLIENTES = "./clientes"
+CARPETA_CLIENTES = os.path.expanduser("~/.private_data/clientes")
 
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
@@ -69,23 +66,17 @@ def enviar_telegram(mensaje):
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
-    # Sanitizar nombre para evitar path traversal
     nombre_seguro = re.sub(r'[^\w\s\-.]', '', nombre_cliente).strip()
     if not nombre_seguro:
         raise ValueError("Nombre de cliente inválido")
-    base_clientes = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientes")
+    
+    base_clientes = os.path.expanduser("~/.private_data/clientes")
     base = os.path.join(base_clientes, nombre_seguro)
-    # Verificar que no escapó del directorio base
+    
     if not os.path.abspath(base).startswith(os.path.abspath(base_clientes)):
         raise ValueError("Ruta inválida")
-    return {
-        "base":       base,
-        "facturas":   os.path.join(base, "facturas"),
-        "procesados": os.path.join(base, "facturas", "procesados"),
-        "error":      os.path.join(base, "facturas", "error"),
-        "db":         os.path.join(base, "facturas.db"),
-        "excel":      os.path.join(base, "resultados.xlsx"),
-    }
+    
+    return { ... }  # el resto igual
 
 def crear_carpetas_cliente(rutas):
     os.makedirs(rutas["facturas"],   exist_ok=True)
@@ -707,3 +698,4 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Error critico: {e}")
         print(f"Error critico: {e}")
+

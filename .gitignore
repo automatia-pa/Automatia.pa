@@ -1,7 +1,40 @@
-.env 
-*.db 
-clientes/ 
-__pycache__/ 
-*.pyc 
-procesamiento.log 
-.env 
+# Env / secrets — NUNCA subir a GitHub
+.env
+*.env
+.env.*
+
+# Base de datos — contiene datos de usuarios y facturas
+*.db
+users.db
+
+# Logs
+*.log
+procesamiento.log
+
+# Archivos de clientes (facturas reales)
+clientes/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# Distribución
+dist/
+build/
+*.egg-info/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
