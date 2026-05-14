@@ -1,5 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.utils import secure_filename
 import os
 import threading
@@ -9,11 +12,22 @@ from dotenv import load_dotenv
 
 from models import User, db_init
 from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
+import re
+
+def sanitizar_nombre_cliente(nombre):
+    """Elimina caracteres peligrosos del nombre de cliente antes de usarlo en rutas."""
+    # Solo letras, números, espacios, guiones, puntos y paréntesis
+    nombre = re.sub(r'[^\w\s\-\.\(\)áéíóúÁÉÍÓÚñÑ]', '', nombre)
+    nombre = nombre.strip().strip('.')
+    if not nombre:
+        raise ValueError("Nombre de cliente inválido")
+    return nombre
 
 # ── Cargar variables de entorno ──────────────────────────────
 load_dotenv()
 
 app = Flask(__name__)
+csrf = CSRFProtect(app)
 
 # FIX 1: secret_key viene del .env, nunca hardcodeado
 app.secret_key = os.environ.get("FLASK_SECRET_KEY")
@@ -29,6 +43,14 @@ ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml'}
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Rate limiting — protección contra fuerza bruta
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://"
+)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -69,6 +91,7 @@ def _run_background(nombre_cliente, archivos_guardados):
 
 # ── INDEX + LOGIN ────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def index():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
@@ -103,6 +126,7 @@ def register():
 
 # ── LOGIN ────────────────────────────────────────────────────
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
@@ -121,7 +145,7 @@ def login():
 @login_required
 def dashboard():
     import sqlite3 as _sq
-    rutas = get_rutas_cliente(current_user.nombre)
+    rutas = get_rutas_cliente(sanitizar_nombre_cliente(current_user.nombre))
     facturas = []
     if os.path.exists(rutas["db"]):
         try:
@@ -163,7 +187,7 @@ def actualizar_estado():
         flash("Estado inválido", "danger")
         return redirect(url_for("dashboard"))
 
-    rutas = get_rutas_cliente(current_user.nombre)
+    rutas = get_rutas_cliente(sanitizar_nombre_cliente(current_user.nombre))
     if not os.path.exists(rutas["db"]):
         flash("Sin datos aún", "warning")
         return redirect(url_for("dashboard"))
@@ -192,7 +216,7 @@ def actualizar_estado():
 def download_dgi():
     import tempfile
     periodo = request.args.get("periodo")  # e.g. "2026-04" para filtrar por mes
-    rutas = get_rutas_cliente(current_user.nombre)
+    rutas = get_rutas_cliente(sanitizar_nombre_cliente(current_user.nombre))
 
     if not os.path.exists(rutas["db"]):
         flash("Aún no tienes facturas procesadas", "warning")
@@ -200,15 +224,15 @@ def download_dgi():
 
     # Guardar CSV temporal
     sufijo = f"_{periodo}" if periodo else ""
-    csv_path = os.path.join(rutas["base"], f"declaracion_dgi{sufijo}.csv")
-    total = exportar_dgi_csv(rutas["db"], csv_path, periodo=periodo)
+    base_path = os.path.join(rutas["base"], f"declaracion_dgi{sufijo}")
+    total, out_path = exportar_dgi_csv(rutas["db"], base_path + ".csv", periodo=periodo)
 
     if total == 0:
         flash("No hay facturas aprobadas para exportar. Aprueba facturas primero.", "warning")
         return redirect(url_for("dashboard"))
 
-    return send_file(csv_path, as_attachment=True,
-                     download_name=f"declaracion_dgi{sufijo}.csv")
+    return send_file(out_path, as_attachment=True,
+                     download_name=os.path.basename(out_path))
 
 # ── UPLOAD ───────────────────────────────────────────────────
 @app.route("/upload", methods=["POST"])
@@ -219,7 +243,7 @@ def upload():
         return redirect(url_for("dashboard"))
 
     files = request.files.getlist("files[]")
-    rutas = get_rutas_cliente(current_user.nombre)
+    rutas = get_rutas_cliente(sanitizar_nombre_cliente(current_user.nombre))
 
     os.makedirs(rutas["facturas"],   exist_ok=True)
     os.makedirs(rutas["procesados"], exist_ok=True)
@@ -245,7 +269,7 @@ def upload():
         # Lanzar procesamiento en background — el browser no espera
         t = threading.Thread(
             target=_run_background,
-            args=(current_user.nombre, guardados),
+            args=(sanitizar_nombre_cliente(current_user.nombre), guardados),
             daemon=True
         )
         t.start()
@@ -258,8 +282,14 @@ def upload():
 @app.route("/upload/status")
 @login_required
 def upload_status():
+    nombre = sanitizar_nombre_cliente(current_user.nombre)
     with _jobs_lock:
-        job = _jobs.get(current_user.nombre)
+        job = _jobs.get(nombre)
+        # Limpiar jobs viejos (más de 1 hora) para evitar memory leak
+        ahora = time.time()
+        viejos = [k for k, v in _jobs.items() if ahora - v.get("ts", 0) > 3600]
+        for k in viejos:
+            del _jobs[k]
     if not job:
         return jsonify({"status": "idle"})
     return jsonify(job)
@@ -268,7 +298,7 @@ def upload_status():
 @app.route("/download-excel")
 @login_required
 def download_excel():
-    rutas = get_rutas_cliente(current_user.nombre)
+    rutas = get_rutas_cliente(sanitizar_nombre_cliente(current_user.nombre))
     if os.path.exists(rutas["excel"]):
         return send_file(rutas["excel"], as_attachment=True)
     flash("Aún no tienes facturas procesadas", "warning")
@@ -281,6 +311,22 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# FIX 6: debug=False — NUNCA True en producción
+# ── SECURITY HEADERS ────────────────────────────────────────
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:;"
+    )
+    return response
+
+# FIX: debug=False — NUNCA True en producción
 if __name__ == "__main__":
     app.run(debug=False)
