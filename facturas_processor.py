@@ -24,7 +24,7 @@ API_KEY          = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-CARPETA_CLIENTES = "./clientes"
+CARPETA_CLIENTES = os.path.expanduser("~/.private_data/clientes")
 
 MODELOS = [
     "meta-llama/llama-3.3-70b-instruct:free",
