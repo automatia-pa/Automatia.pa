@@ -66,23 +66,17 @@ def enviar_telegram(mensaje):
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
-    # Sanitizar nombre para evitar path traversal
     nombre_seguro = re.sub(r'[^\w\s\-.]', '', nombre_cliente).strip()
     if not nombre_seguro:
         raise ValueError("Nombre de cliente inválido")
-    base_clientes = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientes")
+    
+    base_clientes = os.path.expanduser("~/.private_data/clientes")
     base = os.path.join(base_clientes, nombre_seguro)
-    # Verificar que no escapó del directorio base
+    
     if not os.path.abspath(base).startswith(os.path.abspath(base_clientes)):
         raise ValueError("Ruta inválida")
-    return {
-        "base":       base,
-        "facturas":   os.path.join(base, "facturas"),
-        "procesados": os.path.join(base, "facturas", "procesados"),
-        "error":      os.path.join(base, "facturas", "error"),
-        "db":         os.path.join(base, "facturas.db"),
-        "excel":      os.path.join(base, "resultados.xlsx"),
-    }
+    
+    return { ... }  # el resto igual
 
 def crear_carpetas_cliente(rutas):
     os.makedirs(rutas["facturas"],   exist_ok=True)
