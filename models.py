@@ -2,6 +2,7 @@ import sqlite3
 import threading
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+
 import os
 DB_PATH = os.path.expanduser("~/.private_data/users.db")
 

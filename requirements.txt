@@ -10,3 +10,5 @@ python-dotenv==1.2.2
 openpyxl==3.1.5
 et_xmlfile==2.0.0
 PyPDF2==3.0.1
+pyotp
+qrcode[pil]

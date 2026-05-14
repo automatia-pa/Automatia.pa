@@ -66,17 +66,28 @@ def enviar_telegram(mensaje):
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
+    """Retorna rutas seguras para el cliente"""
+    # Sanitizar nombre
     nombre_seguro = re.sub(r'[^\w\s\-.]', '', nombre_cliente).strip()
     if not nombre_seguro:
         raise ValueError("Nombre de cliente inválido")
-    
+
+    # Ruta base privada
     base_clientes = os.path.expanduser("~/.private_data/clientes")
     base = os.path.join(base_clientes, nombre_seguro)
-    
+
+    # Seguridad anti path traversal
     if not os.path.abspath(base).startswith(os.path.abspath(base_clientes)):
-        raise ValueError("Ruta inválida")
-    
-    return { ... }  # el resto igual
+        raise ValueError("Ruta inválida - intento de path traversal")
+
+    return {
+        "base":       base,
+        "facturas":   os.path.join(base, "facturas"),
+        "procesados": os.path.join(base, "facturas", "procesados"),
+        "error":      os.path.join(base, "facturas", "error"),
+        "db":         os.path.join(base, "facturas.db"),
+        "excel":      os.path.join(base, "resultados.xlsx"),
+    }
 
 def crear_carpetas_cliente(rutas):
     os.makedirs(rutas["facturas"],   exist_ok=True)
@@ -698,4 +709,3 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Error critico: {e}")
         print(f"Error critico: {e}")
-
