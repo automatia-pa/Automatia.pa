@@ -13,12 +13,24 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import re
 
-import PyPDF2
+# ══════════════════════════════════════════════════════════════
+# PATCH 1 — PyPDF2 → pypdf
+# PyPDF2 está deprecado desde 2022. pypdf es su sucesor oficial,
+# con mejor extracción de texto y soporte activo.
+# Instalar: pip install pypdf
+# ══════════════════════════════════════════════════════════════
+try:
+    from pypdf import PdfReader          # pypdf (nuevo)
+    _PDF_BACKEND = "pypdf"
+except ImportError:
+    import PyPDF2                        # fallback si aún no se migró
+    _PDF_BACKEND = "PyPDF2"
+
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 
 # ─────────────────────────────────────────
-# CONFIGURACION - SIN load_dotenv()
+# CONFIGURACION
 # ─────────────────────────────────────────
 API_KEY          = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN")
@@ -40,7 +52,37 @@ MODELOS = [
 
 CAMPOS_OBLIGATORIOS = ["proveedor", "monto_total", "moneda"]
 
-# ── Logging con rotación (máx 2MB × 3 archivos) ─────────────
+# ══════════════════════════════════════════════════════════════
+# PATCH 2 — LOG INJECTION SANITIZACIÓN
+# Un atacante puede subir un archivo llamado:
+#   "factura\n[CRITICAL] admin logged in.pdf"
+# e inyectar entradas falsas en los logs.
+# Solución: sanitizar cualquier string antes de loggearlo.
+# ══════════════════════════════════════════════════════════════
+def _sanitize_log(value: str) -> str:
+    """
+    Elimina saltos de línea, tabs y caracteres de control del string
+    para prevenir log injection. Trunca a 500 chars para evitar logs enormes.
+    """
+    if not isinstance(value, str):
+        value = str(value)
+    # Reemplazar cualquier carácter de control (incluye \n, \r, \t)
+    sanitized = re.sub(r'[\x00-\x1f\x7f]', ' ', value)
+    return sanitized[:500]
+
+def slog(level: str, msg: str, *args):
+    """
+    Wrapper de logging con sanitización automática.
+    Uso igual que logging.info/warning/error:
+      slog("info",  "Factura procesada: {}", archivo)
+      slog("error", "Fallo en {}/{}", cliente, archivo)
+    """
+    # Sanitizar todos los argumentos interpolados
+    safe_args = [_sanitize_log(a) for a in args]
+    safe_msg  = _sanitize_log(msg).format(*safe_args) if safe_args else _sanitize_log(msg)
+    getattr(logging, level)(safe_msg)
+
+# ── Logging con rotación ─────────────────────────────────────
 _handler = RotatingFileHandler(
     "procesamiento.log", maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8"
 )
@@ -62,21 +104,17 @@ def enviar_telegram(mensaje):
         req = urllib.request.Request(url + "?" + params.decode())
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:
-        logging.error(f"Telegram error: {e}")
+        slog("error", "Telegram error: {}", str(e))
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
-    """Retorna rutas seguras para el cliente"""
-    # Sanitizar nombre
     nombre_seguro = re.sub(r'[^\w\s\-.]', '', nombre_cliente).strip()
     if not nombre_seguro:
         raise ValueError("Nombre de cliente inválido")
 
-    # Ruta base privada
     base_clientes = os.path.expanduser("~/.private_data/clientes")
     base = os.path.join(base_clientes, nombre_seguro)
 
-    # Seguridad anti path traversal
     if not os.path.abspath(base).startswith(os.path.abspath(base_clientes)):
         raise ValueError("Ruta inválida - intento de path traversal")
 
@@ -110,6 +148,119 @@ CATEGORIAS_VALIDAS = [
     "Publicidad y Marketing", "Impuestos y Tasas", "Alimentacion", "Otros",
 ]
 
+# ══════════════════════════════════════════════════════════════
+# PATCH 3 — VALIDACIÓN DE CAMPOS FISCALES
+# El validador original solo chequeaba que los campos existieran.
+# Este agrega:
+#   - Formato de RUC panameño (natural, jurídico, extranjero)
+#   - Formato de fecha (DD/MM/AAAA o AAAA-MM-DD)
+#   - Monto positivo y razonable (> 0, < 10 millones)
+#   - Moneda válida
+#   - CUFE: alfanumérico si existe
+#   - Confianza: integer 0-100
+# Retorna (bool, lista_de_advertencias) para loggear qué falló.
+# ══════════════════════════════════════════════════════════════
+
+# Patrones RUC Panamá:
+# Natural:   8-XXX-XXXXX  (ej: 8-123-45678)
+# Jurídico:  XXX-XXX-XXXXXX (ej: 155-12-34567)
+# Extranjero: E-X-XXXXXX
+# NITE:      N-XX-XXXXXX
+# Simplificado: solo dígitos con guiones
+_RUC_PATTERN = re.compile(
+    r'^('
+    r'\d{1,2}-\d{3,4}-\d{4,6}'      # Natural: 8-123-45678
+    r'|\d{2,3}-\d{2,3}-\d{4,7}'     # Jurídico: 155-12-34567
+    r'|[ENP]-\d{1,2}-\d{4,7}'       # Extranjero/NITE
+    r'|\d{6,15}'                      # Solo dígitos (algunos sistemas)
+    r')$'
+)
+_FECHA_PATTERNS = [
+    re.compile(r'^\d{2}/\d{2}/\d{4}$'),   # DD/MM/AAAA
+    re.compile(r'^\d{4}-\d{2}-\d{2}$'),   # AAAA-MM-DD (ISO, e-Tax XML)
+]
+_MONEDAS_VALIDAS = {"USD", "PAB", "EUR", "COP", "MXN", "PEN", "CLP", "ARS", "BRL"}
+
+def validar_campos_fiscales(datos: dict) -> tuple:
+    """
+    Valida campos fiscales panameños.
+    Retorna (es_valido: bool, advertencias: list[str])
+    """
+    advertencias = []
+
+    # ── Campos obligatorios ───────────────────────────────────
+    for campo in CAMPOS_OBLIGATORIOS:
+        if not datos.get(campo):
+            advertencias.append(f"Campo obligatorio faltante: {campo}")
+
+    if advertencias:
+        return False, advertencias
+
+    # ── monto_total: número positivo y razonable ──────────────
+    try:
+        monto = float(datos["monto_total"])
+        if monto <= 0:
+            advertencias.append(f"monto_total debe ser positivo, recibido: {monto}")
+        elif monto > 10_000_000:
+            # No bloquea, pero advierte — podría ser legítimo
+            advertencias.append(f"monto_total inusualmente alto: {monto} (revisar manualmente)")
+    except (ValueError, TypeError):
+        advertencias.append(f"monto_total no es número: {datos.get('monto_total')}")
+        return False, advertencias
+
+    # ── moneda ────────────────────────────────────────────────
+    moneda = str(datos.get("moneda", "")).strip().upper()
+    if moneda not in _MONEDAS_VALIDAS:
+        advertencias.append(f"Moneda no reconocida: '{moneda}' (se acepta, pero verificar)")
+
+    # ── RUC (opcional pero si existe debe tener formato válido) ─
+    ruc = datos.get("ruc")
+    if ruc and ruc not in (None, "null", ""):
+        ruc_limpio = str(ruc).strip()
+        if not _RUC_PATTERN.match(ruc_limpio):
+            advertencias.append(f"RUC con formato inusual: '{ruc_limpio}' (verificar)")
+
+    # ── fecha (opcional pero si existe debe tener formato válido) ─
+    fecha = datos.get("fecha")
+    if fecha and fecha not in (None, "null", ""):
+        fecha_str = str(fecha).strip()
+        if not any(p.match(fecha_str) for p in _FECHA_PATTERNS):
+            advertencias.append(f"Fecha con formato no estándar: '{fecha_str}' (esperado DD/MM/AAAA o AAAA-MM-DD)")
+
+    # ── confianza: 0-100 ──────────────────────────────────────
+    try:
+        confianza = int(datos.get("confianza", 70))
+        if not (0 <= confianza <= 100):
+            advertencias.append(f"Confianza fuera de rango: {confianza}")
+            datos["confianza"] = max(0, min(100, confianza))  # clamp
+    except (ValueError, TypeError):
+        datos["confianza"] = 70
+
+    # ── CUFE: alfanumérico si existe ──────────────────────────
+    cufe = datos.get("cufe")
+    if cufe and cufe not in (None, "null", ""):
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', str(cufe)):
+            advertencias.append(f"CUFE con caracteres inusuales: '{str(cufe)[:30]}'")
+
+    # Solo advertencias no críticas → igual es válido
+    tiene_error_critico = any(
+        "obligatorio" in a or "no es número" in a
+        for a in advertencias
+    )
+    return not tiene_error_critico, advertencias
+
+
+def validar_resultado(datos):
+    """Compatibilidad con el código existente — usa el validador fiscal."""
+    if not isinstance(datos, dict):
+        return False
+    es_valido, advertencias = validar_campos_fiscales(datos)
+    for adv in advertencias:
+        slog("warning", "Validación fiscal: {}", adv)
+    return es_valido
+
+
+# ─────────────────────────────────────────
 def init_db(db_path):
     with sqlite3.connect(db_path) as conn:
         conn.execute('''
@@ -137,21 +288,23 @@ def init_db(db_path):
                 estado TEXT DEFAULT "pendiente",
                 comentario_estado TEXT,
                 fecha_estado TEXT,
-                fecha_procesamiento TEXT
+                fecha_procesamiento TEXT,
+                advertencias_fiscales TEXT
             )
         ''')
         nuevas_columnas = [
-            ('categoria',         'TEXT DEFAULT "Otros"'),
-            ('receptor',          'TEXT'),
-            ('ruc_receptor',      'TEXT'),
-            ('subtotal',          'REAL'),
-            ('itbms',             'REAL'),
-            ('cufe',              'TEXT'),
-            ('tipo_doc',          'TEXT DEFAULT "Factura"'),
-            ('fuente',            'TEXT DEFAULT "llm"'),
-            ('estado',            'TEXT DEFAULT "pendiente"'),
-            ('comentario_estado', 'TEXT'),
-            ('fecha_estado',      'TEXT'),
+            ('categoria',              'TEXT DEFAULT "Otros"'),
+            ('receptor',               'TEXT'),
+            ('ruc_receptor',           'TEXT'),
+            ('subtotal',               'REAL'),
+            ('itbms',                  'REAL'),
+            ('cufe',                   'TEXT'),
+            ('tipo_doc',               'TEXT DEFAULT "Factura"'),
+            ('fuente',                 'TEXT DEFAULT "llm"'),
+            ('estado',                 'TEXT DEFAULT "pendiente"'),
+            ('comentario_estado',      'TEXT'),
+            ('fecha_estado',           'TEXT'),
+            ('advertencias_fiscales',  'TEXT'),  # ← nueva columna
         ]
         for col, tipo in nuevas_columnas:
             try:
@@ -161,29 +314,28 @@ def init_db(db_path):
                 pass
 
 # ─────────────────────────────────────────
-# EXCEL con openpyxl puro (sin pandas)
-# ─────────────────────────────────────────
 COLUMNAS_EXCEL = [
-    ("archivo",            "Archivo"),
-    ("proveedor",          "Proveedor"),
-    ("ruc",                "RUC"),
-    ("receptor",           "Receptor"),
-    ("ruc_receptor",       "RUC Receptor"),
-    ("fecha",              "Fecha"),
-    ("monto_total",        "Monto Total"),
-    ("subtotal",           "Subtotal"),
-    ("itbms",              "ITBMS"),
-    ("moneda",             "Moneda"),
-    ("categoria",          "Categoría"),
-    ("tipo_doc",           "Tipo Documento"),
-    ("estado",             "Estado"),
-    ("comentario_estado",  "Comentario"),
-    ("descripcion",        "Descripción"),
-    ("cufe",               "CUFE"),
-    ("fuente",             "Fuente"),
-    ("confianza",          "Confianza %"),
-    ("modelo_usado",       "Modelo"),
-    ("fecha_procesamiento","Fecha Procesado"),
+    ("archivo",               "Archivo"),
+    ("proveedor",             "Proveedor"),
+    ("ruc",                   "RUC"),
+    ("receptor",              "Receptor"),
+    ("ruc_receptor",          "RUC Receptor"),
+    ("fecha",                 "Fecha"),
+    ("monto_total",           "Monto Total"),
+    ("subtotal",              "Subtotal"),
+    ("itbms",                 "ITBMS"),
+    ("moneda",                "Moneda"),
+    ("categoria",             "Categoría"),
+    ("tipo_doc",              "Tipo Documento"),
+    ("estado",                "Estado"),
+    ("comentario_estado",     "Comentario"),
+    ("descripcion",           "Descripción"),
+    ("cufe",                  "CUFE"),
+    ("fuente",                "Fuente"),
+    ("confianza",             "Confianza %"),
+    ("advertencias_fiscales", "⚠ Advertencias"),   # ← nueva columna en Excel
+    ("modelo_usado",          "Modelo"),
+    ("fecha_procesamiento",   "Fecha Procesado"),
 ]
 
 def exportar_excel(db_path, excel_path):
@@ -199,7 +351,6 @@ def exportar_excel(db_path, excel_path):
         ws = wb.active
         ws.title = "Facturas"
 
-        # Cabecera con estilo
         header_fill = PatternFill("solid", fgColor="00E5C3")
         header_font = Font(bold=True, color="030F0D")
         for col_idx, (_, label) in enumerate(COLUMNAS_EXCEL, 1):
@@ -208,27 +359,27 @@ def exportar_excel(db_path, excel_path):
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center")
 
-        # Datos
+        warn_fill = PatternFill("solid", fgColor="FEF3C7")  # amarillo suave para advertencias
         for row_idx, row in enumerate(rows, 2):
             for col_idx, (field, _) in enumerate(COLUMNAS_EXCEL, 1):
-                ws.cell(row=row_idx, column=col_idx, value=row[field])
+                cell = ws.cell(row=row_idx, column=col_idx, value=row[field])
+                # Resaltar fila si tiene advertencias fiscales
+                if field == "advertencias_fiscales" and row[field]:
+                    cell.fill = warn_fill
 
-        # Ancho automático
         for col in ws.columns:
             max_len = max((len(str(c.value or "")) for c in col), default=10)
-            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 60)
 
         wb.save(excel_path)
         return len(rows)
     except Exception as e:
-        logging.error(f"Error Excel: {e}")
+        slog("error", "Error Excel: {}", str(e))
         return 0
 
 
 def exportar_dgi_csv(db_path, csv_path, periodo=None):
-    """
-    CSV formato DGI Panamá — solo facturas aprobadas.
-    """
+    """CSV formato DGI Panamá — solo facturas aprobadas."""
     try:
         with sqlite3.connect(db_path) as conn:
             query = """
@@ -266,7 +417,6 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
             writer = csv.writer(f)
             writer.writerow(cols)
             for row in rows:
-                # Formatear montos
                 formatted = list(row)
                 for i, col in enumerate(cols):
                     if col in ("Subtotal", "ITBMS_7pct", "Total_Factura"):
@@ -278,7 +428,7 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
 
         return len(rows)
     except Exception as e:
-        logging.error(f"Error exportando CSV DGI: {e}")
+        slog("error", "Error exportando CSV DGI: {}", str(e))
         return 0
 
 # ─────────────────────────────────────────
@@ -313,15 +463,15 @@ def extraer_datos_xml_etax(ruta_archivo):
             el = root.find(path, ns)
             return el.text.strip() if el is not None and el.text else default
 
-        cufe     = find_text('.//cbc:UUID') or find_text('.//cbc:ID')
+        cufe      = find_text('.//cbc:UUID') or find_text('.//cbc:ID')
         proveedor = (find_text('.//cac:AccountingSupplierParty//cbc:RegistrationName') or
                      find_text('.//cac:AccountingSupplierParty//cbc:Name'))
-        ruc      = (find_text('.//cac:AccountingSupplierParty//cbc:CompanyID') or
-                    find_text('.//cac:AccountingSupplierParty//cbc:ID'))
-        receptor = (find_text('.//cac:AccountingCustomerParty//cbc:RegistrationName') or
-                    find_text('.//cac:AccountingCustomerParty//cbc:Name'))
+        ruc       = (find_text('.//cac:AccountingSupplierParty//cbc:CompanyID') or
+                     find_text('.//cac:AccountingSupplierParty//cbc:ID'))
+        receptor  = (find_text('.//cac:AccountingCustomerParty//cbc:RegistrationName') or
+                     find_text('.//cac:AccountingCustomerParty//cbc:Name'))
         ruc_receptor = find_text('.//cac:AccountingCustomerParty//cbc:CompanyID')
-        fecha    = find_text('.//cbc:IssueDate')
+        fecha     = find_text('.//cbc:IssueDate')
 
         monto_total_str = (find_text('.//cac:LegalMonetaryTotal//cbc:PayableAmount') or
                            find_text('.//cbc:TaxInclusiveAmount'))
@@ -353,7 +503,7 @@ def extraer_datos_xml_etax(ruta_archivo):
             subtotal = monto_total - itbms
 
         if not proveedor or monto_total == 0:
-            logging.warning(f"XML e-Tax sin campos mínimos: {ruta_archivo}")
+            slog("warning", "XML e-Tax sin campos mínimos: {}", ruta_archivo)
             return None
 
         return {
@@ -375,10 +525,10 @@ def extraer_datos_xml_etax(ruta_archivo):
             'fuente':       'xml_etax',
         }
     except ET.ParseError as e:
-        logging.error(f"XML inválido {ruta_archivo}: {e}")
+        slog("error", "XML inválido {}: {}", ruta_archivo, str(e))
         return None
     except Exception as e:
-        logging.error(f"Error parseando XML e-Tax {ruta_archivo}: {e}")
+        slog("error", "Error parseando XML e-Tax {}: {}", ruta_archivo, str(e))
         return None
 
 
@@ -388,15 +538,24 @@ def extraer_texto(ruta_archivo):
         if ext == ".txt":
             with open(ruta_archivo, "r", encoding="utf-8", errors="ignore") as f:
                 return f.read()
+
         elif ext == ".pdf":
+            # ── PATCH 1: usar pypdf en lugar de PyPDF2 ──────────
             texto = ""
-            with open(ruta_archivo, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
-                for i, page in enumerate(reader.pages):
-                    texto += f"\n--- Pagina {i+1} ---\n" + (page.extract_text() or "")
+            if _PDF_BACKEND == "pypdf":
+                with open(ruta_archivo, "rb") as f:
+                    reader = PdfReader(f)
+                    for i, page in enumerate(reader.pages):
+                        texto += f"\n--- Pagina {i+1} ---\n" + (page.extract_text() or "")
+            else:
+                # fallback PyPDF2
+                with open(ruta_archivo, "rb") as f:
+                    reader = PyPDF2.PdfReader(f)
+                    for i, page in enumerate(reader.pages):
+                        texto += f"\n--- Pagina {i+1} ---\n" + (page.extract_text() or "")
             return texto
+
         elif ext in [".xlsx", ".xls"]:
-            # Sin pandas: openpyxl directo
             wb = openpyxl.load_workbook(ruta_archivo, read_only=True, data_only=True)
             lineas = []
             for ws in wb.worksheets:
@@ -406,25 +565,12 @@ def extraer_texto(ruta_archivo):
                         lineas.append(linea)
             wb.close()
             return "\n".join(lineas)
+
     except Exception as e:
-        logging.error(f"Error leyendo {ruta_archivo}: {e}")
+        slog("error", "Error leyendo {}: {}", ruta_archivo, str(e))
     return None
 
 # ─────────────────────────────────────────
-def validar_resultado(datos):
-    if not isinstance(datos, dict):
-        return False
-    for campo in CAMPOS_OBLIGATORIOS:
-        if not datos.get(campo):
-            logging.warning(f"Campo obligatorio faltante: {campo}")
-            return False
-    try:
-        float(datos["monto_total"])
-    except (ValueError, TypeError):
-        logging.warning(f"monto_total no es número: {datos.get('monto_total')}")
-        return False
-    return True
-
 def parsear_json_respuesta(content):
     if "<think>" in content:
         fin_think = content.find("</think>")
@@ -513,32 +659,32 @@ def llamar_ia(texto):
                 datos = parsear_json_respuesta(content)
                 if datos is None:
                     print("JSON invalido")
-                    logging.warning(f"{nombre}: no se pudo parsear JSON")
+                    slog("warning", "{}: no se pudo parsear JSON", nombre)
                     continue
 
                 if not validar_resultado(datos):
                     print("campos incompletos")
-                    logging.warning(f"{nombre}: campos obligatorios faltantes")
+                    slog("warning", "{}: campos obligatorios faltantes o inválidos", nombre)
                     continue
 
                 print(f"OK (confianza: {datos.get('confianza', '?')}%)")
-                logging.info(f"Factura procesada con {nombre}")
+                slog("info", "Factura procesada con {}", nombre)
                 return datos, nombre
 
         except urllib.error.HTTPError as e:
             print(f"HTTP {e.code}")
-            logging.warning(f"{nombre}: HTTP error {e.code}")
+            slog("warning", "{}: HTTP error {}", nombre, str(e.code))
         except urllib.error.URLError as e:
             print("conexion fallida")
-            logging.warning(f"{nombre}: URL error {e.reason}")
+            slog("warning", "{}: URL error {}", nombre, str(e.reason))
         except json.JSONDecodeError as e:
             print("JSON error")
-            logging.warning(f"{nombre}: JSON decode error {e}")
+            slog("warning", "{}: JSON decode error {}", nombre, str(e))
         except Exception as e:
             print(f"error: {e}")
-            logging.warning(f"{nombre}: error inesperado {e}")
+            slog("warning", "{}: error inesperado {}", nombre, str(e))
 
-    logging.error("Todos los modelos fallaron para esta factura")
+    slog("error", "Todos los modelos fallaron para esta factura")
     return None, None
 
 # ─────────────────────────────────────────
@@ -547,6 +693,10 @@ def guardar_factura(db_path, datos, archivo, modelo):
     if categoria not in CATEGORIAS_VALIDAS:
         categoria = 'Otros'
 
+    # ── PATCH 3: guardar advertencias fiscales en la DB ──────
+    _, advertencias = validar_campos_fiscales(datos)
+    advertencias_str = " | ".join(advertencias) if advertencias else None
+
     try:
         with sqlite3.connect(db_path) as conn:
             conn.execute('''
@@ -554,8 +704,8 @@ def guardar_factura(db_path, datos, archivo, modelo):
                 (archivo, hash, proveedor, ruc, receptor, ruc_receptor, fecha,
                  monto_total, subtotal, itbms, moneda, descripcion, categoria,
                  confianza, modelo_usado, notas, cufe, tipo_doc, fuente,
-                 estado, fecha_procesamiento)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?)
+                 estado, fecha_procesamiento, advertencias_fiscales)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
             ''', (
                 archivo,
                 datos.get('hash'),
@@ -576,14 +726,15 @@ def guardar_factura(db_path, datos, archivo, modelo):
                 datos.get('cufe'),
                 datos.get('tipo_doc', 'Factura'),
                 datos.get('fuente', 'llm'),
-                datetime.now().isoformat()
+                datetime.now().isoformat(),
+                advertencias_str,
             ))
         return True
     except sqlite3.IntegrityError:
-        logging.warning(f"Factura duplicada: {archivo}")
+        slog("warning", "Factura duplicada: {}", archivo)
         return False
     except Exception as e:
-        logging.error(f"Error guardando factura {archivo}: {e}")
+        slog("error", "Error guardando factura {}: {}", archivo, str(e))
         return False
 
 # ─────────────────────────────────────────
@@ -605,8 +756,8 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         ruta = os.path.join(rutas["facturas"], archivo)
         ext  = os.path.splitext(archivo)[1].lower()
-        print(f"\n  [{nombre_cliente}] Procesando: {archivo}")
-        logging.info(f"Iniciando: {nombre_cliente}/{archivo}")
+        print(f"\n  [{_sanitize_log(nombre_cliente)}] Procesando: {_sanitize_log(archivo)}")
+        slog("info", "Iniciando: {}/{}", nombre_cliente, archivo)
 
         file_hash = get_file_hash(ruta)
 
@@ -631,7 +782,7 @@ def procesar_cliente(nombre_cliente, procesadas):
                 resultado['hash'] = file_hash
             else:
                 print("   XML inválido o sin campos mínimos")
-                logging.error(f"XML e-Tax inválido: {archivo}")
+                slog("error", "XML e-Tax inválido: {}", archivo)
                 mover_archivo(ruta, rutas["error"])
                 procesadas.add(clave(archivo))
                 continue
@@ -639,7 +790,7 @@ def procesar_cliente(nombre_cliente, procesadas):
             texto = extraer_texto(ruta)
             if not texto or len(texto.strip()) < 20:
                 print("   No se pudo extraer texto util")
-                logging.error(f"Texto insuficiente: {archivo}")
+                slog("error", "Texto insuficiente: {}", archivo)
                 mover_archivo(ruta, rutas["error"])
                 procesadas.add(clave(archivo))
                 continue
@@ -652,7 +803,7 @@ def procesar_cliente(nombre_cliente, procesadas):
             if guardar_factura(rutas["db"], resultado, archivo, modelo):
                 fuente_tag = "🧾 e-Tax XML" if ext == ".xml" else f"🤖 {modelo}"
                 print(f"   OK: {resultado.get('proveedor')} | {resultado.get('monto_total')} {resultado.get('moneda')} | {fuente_tag}")
-                logging.info(f"OK: {archivo} | {resultado.get('proveedor')} | {resultado.get('monto_total')}")
+                slog("info", "OK: {} | {} | {}", archivo, str(resultado.get('proveedor')), str(resultado.get('monto_total')))
                 enviar_telegram(
                     f"{'🧾' if ext == '.xml' else '📄'} Factura procesada\n"
                     f"Cliente: {nombre_cliente}\n"
@@ -669,7 +820,7 @@ def procesar_cliente(nombre_cliente, procesadas):
                 mover_archivo(ruta, rutas["procesados"])
         else:
             print("   Fallo el procesamiento con todos los modelos")
-            logging.error(f"FALLO TOTAL: {nombre_cliente}/{archivo}")
+            slog("error", "FALLO TOTAL: {}/{}", nombre_cliente, archivo)
             enviar_telegram(
                 f"❌ Error procesando factura\n"
                 f"Cliente: {nombre_cliente}\n"
@@ -680,7 +831,6 @@ def procesar_cliente(nombre_cliente, procesadas):
 
         procesadas.add(clave(archivo))
 
-    # Exportar Excel UNA SOLA VEZ al terminar el lote (no dentro del loop)
     exportar_excel(rutas["db"], rutas["excel"])
 
 # ─────────────────────────────────────────
@@ -688,6 +838,7 @@ def main():
     os.makedirs(CARPETA_CLIENTES, exist_ok=True)
     print("=" * 60)
     print("  SISTEMA MULTI-CLIENTE DE FACTURAS")
+    print(f"  PDF backend: {_PDF_BACKEND}")
     print("=" * 60)
     enviar_telegram("Sistema multi-cliente iniciado")
     procesadas = set()
@@ -707,5 +858,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\nSistema detenido.")
     except Exception as e:
-        logging.error(f"Error critico: {e}")
+        slog("error", "Error critico: {}", str(e))
         print(f"Error critico: {e}")
