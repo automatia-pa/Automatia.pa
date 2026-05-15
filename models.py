@@ -113,7 +113,7 @@ class User(UserMixin):
         conn.commit()
 
     @staticmethod
-    def get_totp_secret(user_id) -> str | None:
+    def get_totp_secret(user_id):
         """Retorna el secret TOTP del usuario, o None si no tiene MFA."""
         conn = get_conn()
         row = conn.execute(
