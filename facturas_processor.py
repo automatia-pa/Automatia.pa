@@ -94,17 +94,22 @@ logging.getLogger().setLevel(logging.INFO)
 def enviar_telegram(mensaje):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        params = urllib.parse.urlencode({
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": mensaje,
-            "parse_mode": "HTML"
-        }).encode("utf-8")
-        req = urllib.request.Request(url + "?" + params.decode())
-        urllib.request.urlopen(req, timeout=10)
-    except Exception as e:
-        slog("error", "Telegram error: {}", str(e))
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    params = urllib.parse.urlencode({
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": mensaje,
+        "parse_mode": "HTML"
+    })
+    for intento in range(3):
+        try:
+            req = urllib.request.Request(url + "?" + params)
+            urllib.request.urlopen(req, timeout=15)
+            return  # éxito, salir
+        except Exception as e:
+            slog("warning", "Telegram intento {}/3: {}", str(intento + 1), str(e))
+            if intento < 2:
+                time.sleep(10)
+    slog("error", "Telegram falló después de 3 intentos")
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
