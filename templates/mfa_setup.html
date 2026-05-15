@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutomatIA — Configurar 2FA</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #060910; --surface: #0d1117; --border: rgba(255,255,255,0.07); --accent: #00E5C3; --text: #F0F4FF; --muted: #7A8FAD; --error: #F87171; --success: #34D399; }
+  body { background: var(--bg); color: var(--text); font-family: "DM Sans", sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.1; }
+  .orb-1 { width: 500px; height: 500px; background: var(--accent); top: -150px; left: -100px; }
+  .orb-2 { width: 400px; height: 400px; background: #3B82F6; bottom: -100px; right: -100px; }
+  .card { position: relative; z-index: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 24px; padding: 2.5rem; width: 100%; max-width: 460px; }
+  .logo { font-family: "Syne", sans-serif; font-size: 1.5rem; font-weight: 800; color: var(--text); text-decoration: none; display: block; text-align: center; margin-bottom: 0.5rem; }
+  .logo span { color: var(--accent); }
+  h2 { font-family: "Syne", sans-serif; font-size: 1.1rem; text-align: center; margin-bottom: 0.4rem; }
+  .subtitle { text-align: center; color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+  .qr-wrap { display: flex; justify-content: center; margin-bottom: 1.25rem; }
+  .qr-wrap img { border-radius: 12px; border: 2px solid var(--accent); background: #fff; padding: 8px; width: 180px; height: 180px; }
+  .steps { counter-reset: step; margin-bottom: 1.5rem; }
+  .step { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.85rem; font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+  .step::before { counter-increment: step; content: counter(step); min-width: 24px; height: 24px; border-radius: 50%; background: rgba(0,229,195,0.15); color: var(--accent); font-weight: 700; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .secret-box { background: rgba(0,229,195,0.05); border: 1px solid rgba(0,229,195,0.2); border-radius: 10px; padding: 0.65rem 1rem; font-family: monospace; font-size: 0.85rem; color: var(--accent); word-break: break-all; text-align: center; margin: 0.5rem 0 1rem; letter-spacing: 0.08em; }
+  .flash { padding: 0.75rem 1rem; border-radius: 10px; font-size: 0.85rem; margin-bottom: 1.25rem; }
+  .flash.danger { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: var(--error); }
+  .flash.success { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); color: var(--success); }
+  .form-group { margin-bottom: 1rem; }
+  label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-bottom: 0.4rem; letter-spacing: 0.04em; text-transform: uppercase; }
+  input[type="text"] { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; color: var(--text); font-family: "DM Sans", sans-serif; font-size: 1.1rem; letter-spacing: 0.2em; text-align: center; transition: border-color 0.2s; outline: none; }
+  input[type="text"]:focus { border-color: rgba(0,229,195,0.4); }
+  input::placeholder { color: var(--muted); letter-spacing: normal; font-size: 0.9rem; }
+  .btn { display: block; width: 100%; background: var(--accent); color: #030F0D; border: none; border-radius: 100px; padding: 0.85rem; font-size: 0.95rem; font-weight: 600; cursor: pointer; margin-top: 0.5rem; transition: opacity 0.2s, transform 0.2s; font-family: "DM Sans", sans-serif; }
+  .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .back { display: block; text-align: center; margin-top: 1.25rem; font-size: 0.85rem; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="card">
+  <a href="/" class="logo">Automat<span>IA</span></a>
+  <h2>Configurar autenticación 2FA</h2>
+  <p class="subtitle">Protege tu cuenta con Google Authenticator o Authy</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="qr-wrap">
+    <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR Code 2FA">
+  </div>
+
+  <div class="steps">
+    <div class="step">Abre <strong>Google Authenticator</strong> o <strong>Authy</strong> en tu teléfono.</div>
+    <div class="step">Escanea el código QR de arriba, o escribe el código manual:</div>
+    <div class="step">Ingresa el código de 6 dígitos que aparece en la app para confirmar.</div>
+  </div>
+
+  <div class="secret-box">{{ secret }}</div>
+
+  <form method="POST">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="secret" value="{{ secret }}">
+    <div class="form-group">
+      <label>Código de verificación</label>
+      <input type="text" name="code" placeholder="000 000" maxlength="6" autocomplete="one-time-code" inputmode="numeric" required>
+    </div>
+    <button type="submit" class="btn">Activar 2FA</button>
+  </form>
+
+  <a href="{{ url_for('dashboard') }}" class="back">← Volver al dashboard</a>
+</div>
+</body>
+</html>

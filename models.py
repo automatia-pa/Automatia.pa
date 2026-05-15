@@ -6,16 +6,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 DB_PATH = os.path.expanduser("~/.private_data/users.db")
 
-# ── Pool de conexiones por thread (thread-local storage) ──────
-# check_same_thread=False es inseguro en producción si se comparte una misma
-# conexión entre threads. La solución correcta es una conexión por thread.
 _local = threading.local()
 
 def get_conn():
     """Retorna una conexión SQLite dedicada al thread actual."""
     if not hasattr(_local, 'conn') or _local.conn is None:
         _local.conn = sqlite3.connect(DB_PATH, check_same_thread=True)
-        _local.conn.execute("PRAGMA journal_mode=WAL")   # mejor concurrencia
+        _local.conn.execute("PRAGMA journal_mode=WAL")
         _local.conn.execute("PRAGMA foreign_keys=ON")
     return _local.conn
 
@@ -23,14 +20,22 @@ def db_init():
     conn = get_conn()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre   TEXT    NOT NULL,
-            email    TEXT    UNIQUE NOT NULL COLLATE NOCASE,
-            password TEXT    NOT NULL,
-            created_at TEXT DEFAULT (datetime('now'))
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre      TEXT    NOT NULL,
+            email       TEXT    UNIQUE NOT NULL COLLATE NOCASE,
+            password    TEXT    NOT NULL,
+            totp_secret TEXT    DEFAULT NULL,
+            created_at  TEXT    DEFAULT (datetime('now'))
         )
     """)
     conn.commit()
+
+    # Migración: agrega la columna si la DB ya existía sin ella
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN totp_secret TEXT DEFAULT NULL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # columna ya existe, OK
 
 
 class User(UserMixin):
@@ -39,10 +44,11 @@ class User(UserMixin):
         self.nombre = nombre
         self.email  = email
 
+    # ── CRUD básico ──────────────────────────────────────────
+
     @staticmethod
     def create(nombre, email, password):
         conn = get_conn()
-        # pbkdf2:sha256 con 600 000 iteraciones (werkzeug >= 3 usa scrypt por defecto)
         hashed = generate_password_hash(password)
         try:
             conn.execute(
@@ -81,15 +87,41 @@ class User(UserMixin):
 
     @staticmethod
     def check_password(email, password):
-        """Verifica credenciales. Siempre ejecuta check_password_hash para
-        evitar timing attacks (no retorna False prematuramente si el user
-        no existe)."""
+        """Verifica credenciales con tiempo constante (anti timing-attack)."""
         conn = get_conn()
         row = conn.execute(
             "SELECT password FROM users WHERE email=?", (email.lower(),)
         ).fetchone()
         if row:
             return check_password_hash(row[0], password)
-        # Ejecutar hash de todas formas para igualar tiempo de respuesta
         check_password_hash("$dummy$", password)
         return False
+
+    # ── MFA / TOTP ───────────────────────────────────────────
+
+    @staticmethod
+    def set_totp(user_id, secret):
+        """
+        Activa o desactiva TOTP para el usuario.
+        Pasa secret=None para desactivar.
+        """
+        conn = get_conn()
+        conn.execute(
+            "UPDATE users SET totp_secret=? WHERE id=?",
+            (secret, user_id)
+        )
+        conn.commit()
+
+    @staticmethod
+    def get_totp_secret(user_id) -> str | None:
+        """Retorna el secret TOTP del usuario, o None si no tiene MFA."""
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT totp_secret FROM users WHERE id=?", (user_id,)
+        ).fetchone()
+        return row[0] if row else None
+
+    @staticmethod
+    def has_totp(user_id) -> bool:
+        """True si el usuario tiene MFA configurado."""
+        return bool(User.get_totp_secret(user_id))

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, abort, session
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 import os
@@ -6,9 +6,8 @@ import re
 import threading
 import time
 import secrets
-from datetime import timedelta
-from collections import defaultdict
-
+import json
+from datetime import timedelta, datetime
 
 from models import User, db_init
 from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
@@ -33,12 +32,11 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def is_safe_file(file_storage):
-    """Validación básica de archivos (sin magic por ahora)"""
     if not file_storage or not file_storage.filename:
         return False
     return allowed_file(file_storage.filename)
 
-# ── FLASK-LOGIN y resto de configuración (se mantiene igual) ──
+# ── FLASK-LOGIN ───────────────────────────────────────────────
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "index"
@@ -57,36 +55,60 @@ ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
 
-# ── PROTECCIÓN BRUTE-FORCE (en memoria, simple) ───────────────
-# Para producción real usar Flask-Limiter + Redis
-_login_attempts: dict = defaultdict(list)   # ip -> [timestamps]
-_login_lock = threading.Lock()
-MAX_ATTEMPTS = 8
+# ══════════════════════════════════════════════════════════════
+# PATCH 1 — RATE LIMITER PERSISTENTE EN ARCHIVO JSON
+# Reemplaza el defaultdict en memoria que se perdía al reiniciar.
+# Guarda intentos en ~/.private_data/rate_limit.json con formato:
+#   { "ip": [timestamp, timestamp, ...], ... }
+# ══════════════════════════════════════════════════════════════
+_RATE_FILE = os.path.expanduser("~/.private_data/rate_limit.json")
+_rate_lock  = threading.Lock()
+MAX_ATTEMPTS   = 8
 WINDOW_SECONDS = 300  # 5 minutos
+
+def _load_attempts() -> dict:
+    """Lee el archivo de intentos. Devuelve {} si no existe o está corrupto."""
+    try:
+        with open(_RATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_attempts(data: dict):
+    """Escribe el dict al archivo. Crea el directorio si hace falta."""
+    os.makedirs(os.path.dirname(_RATE_FILE), exist_ok=True)
+    tmp = _RATE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, _RATE_FILE)   # escritura atómica
 
 def _check_rate_limit(ip: str) -> bool:
     """Retorna True si la IP puede intentar login, False si está bloqueada."""
     now = time.time()
-    with _login_lock:
-        attempts = [t for t in _login_attempts[ip] if now - t < WINDOW_SECONDS]
-        _login_attempts[ip] = attempts
-        if len(attempts) >= MAX_ATTEMPTS:
-            return False
-        return True
+    with _rate_lock:
+        data = _load_attempts()
+        attempts = [t for t in data.get(ip, []) if now - t < WINDOW_SECONDS]
+        data[ip] = attempts
+        _save_attempts(data)
+        return len(attempts) < MAX_ATTEMPTS
 
 def _register_attempt(ip: str):
+    """Registra un intento fallido para la IP dada."""
     now = time.time()
-    with _login_lock:
-        _login_attempts[ip].append(now)
+    with _rate_lock:
+        data = _load_attempts()
+        attempts = [t for t in data.get(ip, []) if now - t < WINDOW_SECONDS]
+        attempts.append(now)
+        data[ip] = attempts
+        _save_attempts(data)
 
 def _get_ip() -> str:
-    # PythonAnywhere pone la IP real en X-Forwarded-For
     xff = request.headers.get('X-Forwarded-For', '')
     if xff:
         return xff.split(',')[0].strip()
     return request.remote_addr or '0.0.0.0'
 
-# ── SECURITY HEADERS (todas las respuestas) ───────────────────
+# ── SECURITY HEADERS ─────────────────────────────────────────
 @app.after_request
 def set_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -94,7 +116,6 @@ def set_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
-    # CSP — ajusta si agregas más CDNs
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
@@ -106,16 +127,16 @@ def set_security_headers(response):
     )
     return response
 
-# ── CSRF TOKEN simple (sin Flask-WTF) ────────────────────────
+# ── CSRF TOKEN ───────────────────────────────────────────────
 def generate_csrf_token():
-    if '_csrf_token' not in __import__('flask').session:
-        __import__('flask').session['_csrf_token'] = secrets.token_hex(32)
-    return __import__('flask').session['_csrf_token']
+    if '_csrf_token' not in session:
+        session['_csrf_token'] = secrets.token_hex(32)
+    return session['_csrf_token']
 
 app.jinja_env.globals['csrf_token'] = generate_csrf_token
 
 def validate_csrf():
-    token = __import__('flask').session.get('_csrf_token')
+    token      = session.get('_csrf_token')
     form_token = request.form.get('_csrf_token') or request.headers.get('X-CSRF-Token')
     if not token or not form_token or not secrets.compare_digest(token, form_token):
         abort(403)
@@ -131,9 +152,25 @@ def _run_background(nombre_cliente, archivos_guardados):
                 "msg": f"{archivos_guardados} factura(s) procesada(s)",
                 "ts": time.time()
             }
-    except Exception as e:
+    except Exception:
         with _jobs_lock:
             _jobs[nombre_cliente] = {"status": "error", "msg": "Error interno", "ts": time.time()}
+
+# ══════════════════════════════════════════════════════════════
+# PATCH 2 — SESSION FIXATION REAL
+# Flask no tiene session.regenerate. La solución correcta es:
+#   1. Guardar los datos que necesitamos de la sesión vieja.
+#   2. session.clear() — invalida la sesión existente.
+#   3. Reasignar los datos necesarios en la sesión nueva.
+# Esto hace que Flask genere un nuevo session cookie ID.
+# ══════════════════════════════════════════════════════════════
+def _regenerar_sesion():
+    """Regenera el session ID conservando solo el CSRF token."""
+    old_csrf = session.get('_csrf_token')
+    session.clear()
+    # Genera un CSRF token fresco para la sesión autenticada
+    session['_csrf_token'] = old_csrf or secrets.token_hex(32)
+    session.modified = True
 
 # ── INDEX + LOGIN ─────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
@@ -150,27 +187,157 @@ def index():
         email    = request.form.get("email", "").strip()
         password = request.form.get("password", "")
 
-        # Simular tiempo constante para evitar timing attacks
         _register_attempt(ip)
         if User.check_password(email, password):
             user = User.get_by_email(email)
+
+            # ── MFA: si el usuario tiene TOTP configurado, ir a verificación ──
+            if User.has_totp(user.id):
+                session['_mfa_pending_user'] = user.id
+                return redirect(url_for("mfa_verify"))
+
+            # Sin MFA: login directo + regenerar sesión
+            _regenerar_sesion()          # ← PATCH 2 en acción
             login_user(user)
-            # Regenerar sesión tras login exitoso (evita session fixation)
-            __import__('flask').session.regenerate = True
             return redirect(url_for("dashboard"))
 
         flash("Correo o contraseña incorrectos", "danger")
         return redirect(url_for("index"))
     return render_template("index.html")
 
+# ── LOGIN (alias de index) ────────────────────────────────────
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    if request.method == "POST":
+        validate_csrf()
+        ip = _get_ip()
+        if not _check_rate_limit(ip):
+            flash("Demasiados intentos. Espera 5 minutos.", "danger")
+            return redirect(url_for("login"))
+
+        email    = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        _register_attempt(ip)
+
+        if User.check_password(email, password):
+            user = User.get_by_email(email)
+
+            if User.has_totp(user.id):
+                session['_mfa_pending_user'] = user.id
+                return redirect(url_for("mfa_verify"))
+
+            _regenerar_sesion()
+            login_user(user)
+            return redirect(url_for("dashboard"))
+
+        flash("Correo o contraseña incorrectos", "danger")
+    return render_template("login.html")
+
+# ══════════════════════════════════════════════════════════════
+# PATCH 3 — MFA CON PYOTP (TOTP compatible con Google Authenticator)
+#
+# Flujo:
+#   GET  /mfa/setup   → genera secret + QR code para escanear
+#   POST /mfa/setup   → verifica primer código y activa MFA
+#   GET  /mfa/verify  → formulario de código (tras login exitoso)
+#   POST /mfa/verify  → verifica código y completa el login
+#   POST /mfa/disable → desactiva MFA (requiere contraseña)
+# ══════════════════════════════════════════════════════════════
+import pyotp
+import qrcode
+import io
+import base64
+
+@app.route("/mfa/setup", methods=["GET", "POST"])
+@login_required
+def mfa_setup():
+    if request.method == "POST":
+        validate_csrf()
+        secret = request.form.get("secret", "").strip()
+        code   = request.form.get("code", "").strip()
+
+        if not secret or not code:
+            flash("Datos incompletos", "danger")
+            return redirect(url_for("mfa_setup"))
+
+        totp = pyotp.TOTP(secret)
+        if totp.verify(code, valid_window=1):
+            User.set_totp(current_user.id, secret)
+            flash("✅ Autenticación de dos factores activada correctamente", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Código incorrecto. Intenta nuevamente.", "danger")
+            return redirect(url_for("mfa_setup"))
+
+    # GET: generar nuevo secret y QR
+    secret = pyotp.random_base32()
+    totp   = pyotp.TOTP(secret)
+    uri    = totp.provisioning_uri(
+        name=current_user.email,
+        issuer_name="AutomatIA"
+    )
+
+    # Generar QR como imagen base64 (sin guardar en disco)
+    img    = qrcode.make(uri)
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_b64 = base64.b64encode(buffer.getvalue()).decode()
+
+    return render_template("mfa_setup.html", secret=secret, qr_b64=qr_b64)
+
+
+@app.route("/mfa/verify", methods=["GET", "POST"])
+def mfa_verify():
+    """Segundo factor post-login. El user_id está en session['_mfa_pending_user']."""
+    pending_id = session.get('_mfa_pending_user')
+    if not pending_id:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        validate_csrf()
+        code = request.form.get("code", "").strip()
+        user = User.get(pending_id)
+
+        if not user:
+            session.pop('_mfa_pending_user', None)
+            return redirect(url_for("login"))
+
+        secret = User.get_totp_secret(user.id)
+        if secret:
+            totp = pyotp.TOTP(secret)
+            if totp.verify(code, valid_window=1):
+                session.pop('_mfa_pending_user', None)
+                _regenerar_sesion()        # regenerar sesión también aquí
+                login_user(user)
+                return redirect(url_for("dashboard"))
+
+        flash("Código incorrecto o expirado.", "danger")
+        return redirect(url_for("mfa_verify"))
+
+    return render_template("mfa_verify.html")
+
+
+@app.route("/mfa/disable", methods=["POST"])
+@login_required
+def mfa_disable():
+    validate_csrf()
+    password = request.form.get("password", "")
+    if User.check_password(current_user.email, password):
+        User.set_totp(current_user.id, None)
+        flash("Autenticación de dos factores desactivada.", "success")
+    else:
+        flash("Contraseña incorrecta.", "danger")
+    return redirect(url_for("dashboard"))
+
+
 # ── REGISTER ──────────────────────────────────────────────────
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    # Mejor seguridad: Admin key por form o header (no solo query string)
     admin_key = request.form.get("admin_key") or request.headers.get("X-Admin-Key")
-
     if not ADMIN_SECRET or not secrets.compare_digest(admin_key or "", ADMIN_SECRET):
-        abort(403)  # Bloquea acceso directamente
+        abort(403)
 
     if request.method == "POST":
         validate_csrf()
@@ -178,7 +345,6 @@ def register():
         email    = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
-        # Validaciones
         if not nombre or not email or not password:
             flash("Todos los campos son obligatorios", "danger")
             return redirect(url_for("register"))
@@ -201,34 +367,12 @@ def register():
 
     return render_template("register.html")
 
-# ── LOGIN ─────────────────────────────────────────────────────
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
-    if request.method == "POST":
-        validate_csrf()
-        ip = _get_ip()
-        if not _check_rate_limit(ip):
-            flash("Demasiados intentos. Espera 5 minutos.", "danger")
-            return redirect(url_for("login"))
-
-        email    = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        _register_attempt(ip)
-        if User.check_password(email, password):
-            user = User.get_by_email(email)
-            login_user(user)
-            return redirect(url_for("dashboard"))
-        flash("Correo o contraseña incorrectos", "danger")
-    return render_template("login.html")
-
 # ── DASHBOARD ─────────────────────────────────────────────────
 @app.route("/dashboard")
 @login_required
 def dashboard():
     import sqlite3 as _sq
-    rutas = get_rutas_cliente(current_user.nombre)
+    rutas    = get_rutas_cliente(current_user.nombre)
     facturas = []
     if os.path.exists(rutas["db"]):
         try:
@@ -250,7 +394,9 @@ def dashboard():
                 facturas = [dict(r) for r in rows]
         except Exception:
             pass
-    return render_template("dashboard.html", user=current_user, facturas=facturas)
+
+    has_mfa = User.has_totp(current_user.id)
+    return render_template("dashboard.html", user=current_user, facturas=facturas, has_mfa=has_mfa)
 
 # ── APROBAR / RECHAZAR / REVISAR FACTURA ─────────────────────
 @app.route("/factura/estado", methods=["POST"])
@@ -258,7 +404,6 @@ def dashboard():
 def actualizar_estado():
     validate_csrf()
     import sqlite3
-    from datetime import datetime
 
     try:
         factura_id = int(request.form.get("factura_id"))
@@ -267,7 +412,7 @@ def actualizar_estado():
         return redirect(url_for("dashboard"))
 
     nuevo_estado = request.form.get("estado")
-    comentario   = request.form.get("comentario", "")[:500]  # limitar longitud
+    comentario   = request.form.get("comentario", "")[:500]
 
     estados_validos = {"aprobada", "en_revision", "rechazada", "pendiente"}
     if nuevo_estado not in estados_validos:
@@ -314,7 +459,7 @@ def download_dgi():
     total    = exportar_dgi_csv(rutas["db"], csv_path, periodo=periodo or None)
 
     if total == 0:
-        flash("No hay facturas aprobadas para exportar. Aprueba facturas primero.", "warning")
+        flash("No hay facturas aprobadas para exportar.", "warning")
         return redirect(url_for("dashboard"))
 
     return send_file(csv_path, as_attachment=True,
@@ -338,7 +483,7 @@ def upload():
     rutas = get_rutas_cliente(current_user.nombre)
     os.makedirs(rutas["facturas"], exist_ok=True)
 
-    guardados = 0
+    guardados  = 0
     rechazados = 0
 
     for file in files:
@@ -377,7 +522,6 @@ def upload_status():
         job = _jobs.get(current_user.nombre)
     if not job:
         return jsonify({"status": "idle"})
-    # No exponer msg de error interno directamente
     safe_job = {
         "status": job["status"],
         "msg": job["msg"] if job["status"] != "error" else "Error procesando archivos",
@@ -400,10 +544,8 @@ def download_excel():
 @login_required
 def logout():
     logout_user()
-    # Limpiar sesión completa
-    __import__('flask').session.clear()
+    session.clear()
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
     app.run(debug=False)
-
