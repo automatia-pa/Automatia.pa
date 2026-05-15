@@ -590,8 +590,49 @@ def parsear_json_respuesta(content):
     return json.loads(content[inicio:fin])
 
 # ─────────────────────────────────────────
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def _llamar_modelo(model, prompt, api_key):
+    """Llama a un modelo específico. Retorna (datos, nombre_modelo) o (None, None)."""
+    nombre = model.split('/')[1].split(':')[0]
+    try:
+        data = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "max_tokens": 1500
+        }
+        req = urllib.request.Request(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps(data).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": "https://automatiapa.pythonanywhere.com",
+                "X-Title": "AutomatIA Facturas"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+            if "choices" not in result or not result["choices"]:
+                return None, nombre
+            content = result["choices"][0]["message"]["content"].strip()
+            if not content:
+                return None, nombre
+            datos = parsear_json_respuesta(content)
+            if datos and validar_resultado(datos):
+                return datos, nombre
+            return None, nombre
+    except Exception as e:
+        slog("warning", "{}: error {}", nombre, str(e))
+        return None, nombre
+
+
 def llamar_ia(texto):
-    texto_limpio = texto[:15000].replace('"', "'").replace('\\', '/')
+    # Preprocesar texto: quedarse solo con las primeras líneas útiles
+    lineas = [l.strip() for l in texto.splitlines() if l.strip()]
+    texto_limpio = "\n".join(lineas)[:12000].replace('"', "'").replace('\\', '/')
 
     prompt = (
         "Eres un asistente contable experto en facturas de Panama y Latinoamerica.\n"
@@ -602,92 +643,41 @@ def llamar_ia(texto):
         "- Si no encuentras un campo, usa null\n"
         "- monto_total debe ser un numero, no texto\n"
         "- subtotal es el monto antes de impuestos (sin ITBMS)\n"
-        "- itbms es el impuesto de transferencia (7% en Panama, puede llamarse IVA, ITBMS o impuesto)\n"
+        "- itbms es el impuesto de transferencia (7% en Panama)\n"
         "- La relacion esperada: subtotal + itbms = monto_total\n"
         "- Si la factura no desglosa impuesto, usa null en subtotal e itbms\n"
         "- fecha debe estar en formato DD/MM/AAAA\n"
         "- moneda: usa USD, PAB, o la que corresponda\n"
-        "- categoria debe ser UNA de estas opciones exactas: "
+        "- categoria debe ser UNA de estas: "
         "Servicios, Materiales y Suministros, Transporte y Logistica, "
         "Tecnologia y Software, Nomina y RRHH, Alquiler e Inmuebles, "
         "Publicidad y Marketing, Impuestos y Tasas, Alimentacion, Otros\n\n"
-        "FORMATO EXACTO DE RESPUESTA:\n"
-        '{"proveedor": "nombre empresa", "ruc": "numero ruc o null", '
+        "FORMATO EXACTO:\n"
+        '{"proveedor": "nombre", "ruc": "ruc o null", '
         '"fecha": "DD/MM/AAAA o null", "monto_total": 0.00, '
         '"subtotal": 0.00, "itbms": 0.00, '
         '"moneda": "USD", "categoria": "Servicios", '
-        '"descripcion": "descripcion breve", '
-        '"confianza": 85, "notas": "observaciones o null"}\n\n'
-        "TEXTO DE LA FACTURA:\n"
-        + texto_limpio
+        '"descripcion": "breve", "confianza": 85, "notas": null}\n\n'
+        "FACTURA:\n" + texto_limpio
     )
 
-    for i, model in enumerate(MODELOS):
-        try:
-            nombre = model.split('/')[1].split(':')[0]
-            print(f"   Probando {nombre}...", end=" ", flush=True)
+    # Ronda 1: los 3 modelos más rápidos en paralelo
+    ronda_1 = MODELOS[:3]
+    # Ronda 2: el resto en paralelo si la primera falla
+    ronda_2 = MODELOS[3:]
 
-            if i > 0:
-                time.sleep(0.5)
-
-            data = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0,
-                "max_tokens": 1500
+    for ronda, modelos in [("1", ronda_1), ("2", ronda_2)]:
+        print(f"   Ronda {ronda}: probando {len(modelos)} modelos en paralelo...")
+        with ThreadPoolExecutor(max_workers=len(modelos)) as executor:
+            futuros = {
+                executor.submit(_llamar_modelo, m, prompt, API_KEY): m
+                for m in modelos
             }
-
-            req = urllib.request.Request(
-                url="https://openrouter.ai/api/v1/chat/completions",
-                data=json.dumps(data).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {API_KEY}",
-                    "HTTP-Referer": "https://automatiapa.pythonanywhere.com",
-                    "X-Title": "AutomatIA Facturas"
-                },
-                method="POST"
-            )
-
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode())
-
-                if "choices" not in result or not result["choices"]:
-                    print("respuesta vacia")
-                    continue
-
-                content = result["choices"][0]["message"]["content"].strip()
-                if not content:
-                    print("contenido vacio")
-                    continue
-
-                datos = parsear_json_respuesta(content)
-                if datos is None:
-                    print("JSON invalido")
-                    slog("warning", "{}: no se pudo parsear JSON", nombre)
-                    continue
-
-                if not validar_resultado(datos):
-                    print("campos incompletos")
-                    slog("warning", "{}: campos obligatorios faltantes o inválidos", nombre)
-                    continue
-
-                print(f"OK (confianza: {datos.get('confianza', '?')}%)")
-                slog("info", "Factura procesada con {}", nombre)
-                return datos, nombre
-
-        except urllib.error.HTTPError as e:
-            print(f"HTTP {e.code}")
-            slog("warning", "{}: HTTP error {}", nombre, str(e.code))
-        except urllib.error.URLError as e:
-            print("conexion fallida")
-            slog("warning", "{}: URL error {}", nombre, str(e.reason))
-        except json.JSONDecodeError as e:
-            print("JSON error")
-            slog("warning", "{}: JSON decode error {}", nombre, str(e))
-        except Exception as e:
-            print(f"error: {e}")
-            slog("warning", "{}: error inesperado {}", nombre, str(e))
+            for futuro in as_completed(futuros):
+                datos, nombre = futuro.result()
+                if datos:
+                    print(f"   ✓ Respondió: {nombre} (confianza: {datos.get('confianza')}%)")
+                    return datos, nombre
 
     slog("error", "Todos los modelos fallaron para esta factura")
     return None, None
