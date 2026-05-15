@@ -419,8 +419,9 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
 
         import csv
         with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.writer(f)
-            writer.writerow(cols)
+    f.write("sep=,\n")  # ← le dice a Excel que el separador es coma
+    writer = csv.writer(f)
+    writer.writerow(cols)
             for row in rows:
                 formatted = list(row)
                 for i, col in enumerate(cols):
