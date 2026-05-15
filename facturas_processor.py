@@ -601,6 +601,10 @@ def llamar_ia(texto):
         "- No uses bloques de codigo ni comillas triples\n"
         "- Si no encuentras un campo, usa null\n"
         "- monto_total debe ser un numero, no texto\n"
+        "- subtotal es el monto antes de impuestos (sin ITBMS)\n"
+        "- itbms es el impuesto de transferencia (7% en Panama, puede llamarse IVA, ITBMS o impuesto)\n"
+        "- La relacion esperada: subtotal + itbms = monto_total\n"
+        "- Si la factura no desglosa impuesto, usa null en subtotal e itbms\n"
         "- fecha debe estar en formato DD/MM/AAAA\n"
         "- moneda: usa USD, PAB, o la que corresponda\n"
         "- categoria debe ser UNA de estas opciones exactas: "
@@ -610,6 +614,7 @@ def llamar_ia(texto):
         "FORMATO EXACTO DE RESPUESTA:\n"
         '{"proveedor": "nombre empresa", "ruc": "numero ruc o null", '
         '"fecha": "DD/MM/AAAA o null", "monto_total": 0.00, '
+        '"subtotal": 0.00, "itbms": 0.00, '
         '"moneda": "USD", "categoria": "Servicios", '
         '"descripcion": "descripcion breve", '
         '"confianza": 85, "notas": "observaciones o null"}\n\n'
