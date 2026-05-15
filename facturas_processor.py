@@ -419,18 +419,18 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
 
         import csv
         with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
-    f.write("sep=,\n")
-    writer = csv.writer(f)
-    writer.writerow(cols)
-    for row in rows:
-        formatted = list(row)
-        for i, col in enumerate(cols):
-            if col in ("Subtotal", "ITBMS_7pct", "Total_Factura"):
-                try:
-                    formatted[i] = f"{float(row[i] or 0):.2f}"
-                except (TypeError, ValueError):
-                    formatted[i] = "0.00"
-        writer.writerow(formatted)
+            f.write("sep=,\n")
+            writer = csv.writer(f)
+            writer.writerow(cols)
+            for row in rows:
+                formatted = list(row)
+                for i, col in enumerate(cols):
+                    if col in ("Subtotal", "ITBMS_7pct", "Total_Factura"):
+                        try:
+                            formatted[i] = f"{float(row[i] or 0):.2f}"
+                        except (TypeError, ValueError):
+                            formatted[i] = "0.00"
+                writer.writerow(formatted)
 
         return len(rows)
     except Exception as e:
