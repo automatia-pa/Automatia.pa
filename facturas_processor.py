@@ -581,9 +581,10 @@ import base64
 import mimetypes
 
 MODELOS_VISION = [
-    "google/gemini-2.0-flash-exp:free",
-    "google/gemini-flash-1.5:free",
+    "google/gemini-2.5-flash-preview:free",
+    "google/gemini-2.0-flash-lite-001",
     "meta-llama/llama-3.2-11b-vision-instruct:free",
+    "google/gemini-flash-1.5-8b",
 ]
 
 def extraer_datos_imagen(ruta_archivo):
@@ -627,12 +628,8 @@ def extraer_datos_imagen(ruta_archivo):
         '"descripcion": "breve", "confianza": 85, "notas": null}'
     )
 
-    stop_event = threading.Event()
-
     def _llamar_vision(model):
-        nombre = model.split('/')[1].split(':')[0]
-        if stop_event.is_set():
-            return None, nombre
+        nombre = model.split('/')[1].split(':')[0] if '/' in model else model
         try:
             data = {
                 "model": model,
@@ -657,30 +654,38 @@ def extraer_datos_imagen(ruta_archivo):
                 },
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                if stop_event.is_set():
-                    return None, nombre
+            with urllib.request.urlopen(req, timeout=45) as resp:
                 result = json.loads(resp.read().decode())
-                if "choices" not in result or not result["choices"]:
+                if "error" in result:
+                    slog("warning", "Vision {}: API error: {}", nombre, str(result["error"]))
                     return None, nombre
-                content = result["choices"][0]["message"]["content"].strip()
-                datos = parsear_json_respuesta(content)
+                if "choices" not in result or not result["choices"]:
+                    slog("warning", "Vision {}: sin choices en respuesta", nombre)
+                    return None, nombre
+                resp_content = result["choices"][0]["message"]["content"].strip()
+                datos = parsear_json_respuesta(resp_content)
                 if datos and validar_resultado(datos):
                     datos["fuente"] = "vision"
                     return datos, nombre
+                slog("warning", "Vision {}: JSON invalido o campos faltantes — resp: {}", nombre, resp_content[:200])
                 return None, nombre
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore")[:300]
+            slog("warning", "Vision {} HTTP {}: {}", nombre, str(e.code), body)
+            return None, nombre
+        except urllib.error.URLError as e:
+            slog("warning", "Vision {} URLError (dominio bloqueado o sin red): {}", nombre, str(e.reason))
+            return None, nombre
         except Exception as e:
             slog("warning", "Vision {}: {}", nombre, str(e))
             return None, nombre
 
-    with ThreadPoolExecutor(max_workers=len(MODELOS_VISION)) as executor:
-        futuros = {executor.submit(_llamar_vision, m): m for m in MODELOS_VISION}
-        for futuro in as_completed(futuros):
-            datos, nombre = futuro.result()
-            if datos and not stop_event.is_set():
-                stop_event.set()
-                slog("info", "Vision OK: {} con {}", os.path.basename(ruta_archivo), nombre)
-                return datos, nombre
+    # Llamadas secuenciales — mas seguro en PythonAnywhere (evita limites de threads)
+    for model in MODELOS_VISION:
+        datos, nombre = _llamar_vision(model)
+        if datos:
+            slog("info", "Vision OK: {} con {}", os.path.basename(ruta_archivo), nombre)
+            return datos, nombre
 
     slog("error", "Todos los modelos vision fallaron: {}", ruta_archivo)
     return None, None

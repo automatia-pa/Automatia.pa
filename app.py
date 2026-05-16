@@ -152,7 +152,9 @@ def _run_background(nombre_cliente, archivos_guardados):
                 "msg": f"{archivos_guardados} factura(s) procesada(s)",
                 "ts": time.time()
             }
-    except Exception:
+    except Exception as e:
+        import logging, traceback
+        logging.error(f"Error en _run_background [{nombre_cliente}]: {e}\n{traceback.format_exc()}")
         with _jobs_lock:
             _jobs[nombre_cliente] = {"status": "error", "msg": "Error interno", "ts": time.time()}
 
