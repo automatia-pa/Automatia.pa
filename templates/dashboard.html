@@ -332,7 +332,7 @@
               <button class="action-btn" onclick="abrirModal({{ fid }}, '{{ f.get('Proveedor', '')|e }}', '{{ f.get('Estado', 'pendiente') or 'pendiente' }}')">
                 Gestionar
               </button>
-              <button class="action-btn edit-btn" onclick="abrirEdicion({{ fid }}, {{ f | tojson | e }})">
+              <button class="action-btn edit-btn" onclick="abrirEdicion({{ fid }})">
                 ✏ Editar
               </button>
             </td>
@@ -531,18 +531,19 @@
   });
 
   // ── Modal de edición de campos ───────────────────────────
-  function abrirEdicion(idx, factura) {
-    const realId = facturaIds[idx - 1];
+ function abrirEdicion(idx) {
+    const factura = facturas[idx - 1];
+    const realId  = facturaIds[idx - 1];
     document.getElementById('editFacturaId').value = realId;
     document.getElementById('editSub').textContent = factura.Archivo || 'Factura';
 
-    document.getElementById('editProveedor').value  = factura.Proveedor  || '';
-    document.getElementById('editRuc').value        = factura.RUC        || '';
-    document.getElementById('editFecha').value      = factura.Fecha      || '';
-    document.getElementById('editMonto').value      = factura.Monto_Total != null ? factura.Monto_Total : '';
-    document.getElementById('editItbms').value      = factura.ITBMS      != null ? factura.ITBMS      : '';
-    document.getElementById('editSubtotal').value   = factura.Subtotal   != null ? factura.Subtotal   : '';
-    document.getElementById('editDescripcion').value= factura.Descripcion || '';
+    document.getElementById('editProveedor').value   = factura.Proveedor  || '';
+    document.getElementById('editRuc').value         = factura.RUC        || '';
+    document.getElementById('editFecha').value       = factura.Fecha      || '';
+    document.getElementById('editMonto').value       = factura.Monto_Total != null ? factura.Monto_Total : '';
+    document.getElementById('editItbms').value       = factura.ITBMS      != null ? factura.ITBMS      : '';
+    document.getElementById('editSubtotal').value    = factura.Subtotal   != null ? factura.Subtotal   : '';
+    document.getElementById('editDescripcion').value = factura.Descripcion || '';
 
     const monedaEl = document.getElementById('editMoneda');
     for (let opt of monedaEl.options) opt.selected = (opt.value === (factura.Moneda || 'USD'));
