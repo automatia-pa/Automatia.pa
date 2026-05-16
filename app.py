@@ -26,7 +26,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 app.config['SESSION_COOKIE_NAME'] = '__Host-session'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
 
-ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml'}
+ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml', 'jpg', 'jpeg', 'png', 'webp'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

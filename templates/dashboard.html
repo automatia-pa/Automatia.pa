@@ -239,10 +239,10 @@
     <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <div class="upload-zone" id="dropZone">
-        <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls,.xml" id="fileInput">
+        <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls,.xml,.jpg,.jpeg,.png,.webp" id="fileInput">
         <div class="upload-icon">&#128196;</div>
         <p>Arrastra tus facturas aqui o <span>selecciona archivos</span></p>
-        <small>PDF, TXT, XLSX, <strong style="color:var(--accent)">XML e-Tax 2.0</strong> &mdash; hasta 10MB por archivo</small>
+        <small>PDF, TXT, XLSX, XML e-Tax 2.0, <strong style="color:var(--accent)">JPG/PNG (foto de factura)</strong> &mdash; hasta 10MB</small>
       </div>
       <div class="file-list" id="fileList"></div>
       <button type="submit" class="upload-btn" id="uploadBtn">Procesar facturas</button>
@@ -298,6 +298,10 @@
             <td>
               {% if f.get('Fuente') == 'xml_etax' %}
                 <span class="badge high">🧾 e-Tax</span>
+              {% elif f.get('Fuente') == 'vision' %}
+                <span class="badge mid" style="background:rgba(59,130,246,0.1);color:var(--accent2);border:1px solid rgba(59,130,246,0.2);">📷 Foto</span>
+              {% elif f.get('Fuente') == 'manual' %}
+                <span class="badge mid" style="background:rgba(52,211,153,0.1);color:var(--success);">✏ Manual</span>
               {% else %}
                 <span class="badge mid">🤖 IA</span>
               {% endif %}
@@ -328,7 +332,7 @@
               <button class="action-btn" onclick="abrirModal({{ fid }}, '{{ f.get('Proveedor', '')|e }}', '{{ f.get('Estado', 'pendiente') or 'pendiente' }}')">
                 Gestionar
               </button>
-              <button class="action-btn edit-btn" onclick="abrirEdicion({{ fid }})">
+              <button class="action-btn edit-btn" onclick="abrirEdicion({{ fid }}, {{ f | tojson | e }})">
                 ✏ Editar
               </button>
             </td>
@@ -487,7 +491,8 @@
       const el = document.createElement('div');
       el.className = 'file-item';
       const isXML = f.name.toLowerCase().endsWith('.xml');
-      el.innerHTML = (isXML ? '🧾 ' : '📄 ') + f.name + ' <span style="margin-left:auto;opacity:0.6;">' + (f.size / 1024).toFixed(1) + ' KB</span>';
+      const isImg = /\.(jpg|jpeg|png|webp)$/i.test(f.name);
+      el.innerHTML = (isXML ? '🧾 ' : isImg ? '📷 ' : '📄 ') + f.name + ' <span style="margin-left:auto;opacity:0.6;">' + (f.size / 1024).toFixed(1) + ' KB</span>';
       fileList.appendChild(el);
     });
     uploadBtn.style.display = 'block';
@@ -526,19 +531,18 @@
   });
 
   // ── Modal de edición de campos ───────────────────────────
-  function abrirEdicion(idx) {
-    const factura = facturas[idx - 1];
-    const realId  = facturaIds[idx - 1];
+  function abrirEdicion(idx, factura) {
+    const realId = facturaIds[idx - 1];
     document.getElementById('editFacturaId').value = realId;
     document.getElementById('editSub').textContent = factura.Archivo || 'Factura';
 
-    document.getElementById('editProveedor').value   = factura.Proveedor  || '';
-    document.getElementById('editRuc').value         = factura.RUC        || '';
-    document.getElementById('editFecha').value       = factura.Fecha      || '';
-    document.getElementById('editMonto').value       = factura.Monto_Total != null ? factura.Monto_Total : '';
-    document.getElementById('editItbms').value       = factura.ITBMS      != null ? factura.ITBMS      : '';
-    document.getElementById('editSubtotal').value    = factura.Subtotal   != null ? factura.Subtotal   : '';
-    document.getElementById('editDescripcion').value = factura.Descripcion || '';
+    document.getElementById('editProveedor').value  = factura.Proveedor  || '';
+    document.getElementById('editRuc').value        = factura.RUC        || '';
+    document.getElementById('editFecha').value      = factura.Fecha      || '';
+    document.getElementById('editMonto').value      = factura.Monto_Total != null ? factura.Monto_Total : '';
+    document.getElementById('editItbms').value      = factura.ITBMS      != null ? factura.ITBMS      : '';
+    document.getElementById('editSubtotal').value   = factura.Subtotal   != null ? factura.Subtotal   : '';
+    document.getElementById('editDescripcion').value= factura.Descripcion || '';
 
     const monedaEl = document.getElementById('editMoneda');
     for (let opt of monedaEl.options) opt.selected = (opt.value === (factura.Moneda || 'USD'));

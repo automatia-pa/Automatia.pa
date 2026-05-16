@@ -12,8 +12,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import re
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ══════════════════════════════════════════════════════════════
 # PATCH 1 — PyPDF2 → pypdf
@@ -41,16 +39,17 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 CARPETA_CLIENTES = os.path.expanduser("~/.private_data/clientes")
 
 MODELOS = [
-    "meta-llama/llama-3.3-70b-instruct:free",   # ← más confiable, mantener #1
-    "google/gemma-4-26b-a4b-it:free",            # ← subir, Google suele responder rápido
-    "openai/gpt-oss-20b:free",                   # ← modelo más pequeño = más rápido
-    "openai/gpt-oss-120b:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-3-nano-30b-a3b:free",
     "nvidia/nemotron-nano-12b-2-VL:free",
+    "openai/gpt-oss-120b:free",
+    "openai/gpt-oss-20b:free",
+    "google/gemma-4-26b-a4b-it:free",
     "nousresearch/hermes-3-llama-3.1-405b:free",
     "openrouter/free",
 ]
+
 CAMPOS_OBLIGATORIOS = ["proveedor", "monto_total", "moneda"]
 
 # ══════════════════════════════════════════════════════════════
@@ -578,6 +577,115 @@ def extraer_texto(ruta_archivo):
     return None
 
 # ─────────────────────────────────────────
+import base64
+import mimetypes
+
+MODELOS_VISION = [
+    "google/gemini-2.0-flash-exp:free",
+    "google/gemini-flash-1.5:free",
+    "meta-llama/llama-3.2-11b-vision-instruct:free",
+]
+
+def extraer_datos_imagen(ruta_archivo):
+    """
+    Envía la imagen directamente a un modelo vision de OpenRouter.
+    Retorna (datos_dict, nombre_modelo) o (None, None) si falla.
+    """
+    if not API_KEY:
+        slog("error", "OPENROUTER_API_KEY no configurada para vision")
+        return None, None
+
+    ext = os.path.splitext(ruta_archivo)[1].lower()
+    mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+    mime_type = mime_map.get(ext, "image/jpeg")
+
+    try:
+        with open(ruta_archivo, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        slog("error", "No se pudo leer imagen {}: {}", ruta_archivo, str(e))
+        return None, None
+
+    prompt_texto = (
+        "Eres un asistente contable experto en facturas de Panama y Latinoamerica.\n"
+        "Analiza la imagen de esta factura y extrae los datos visibles.\n\n"
+        "INSTRUCCIONES:\n"
+        "- Responde UNICAMENTE con un JSON valido, sin texto antes ni despues\n"
+        "- Si no encuentras un campo, usa null\n"
+        "- monto_total debe ser numero, no texto\n"
+        "- itbms es el impuesto del 7% en Panama\n"
+        "- fecha en formato DD/MM/AAAA\n"
+        "- moneda: USD, PAB, o la que veas\n"
+        "- categoria debe ser UNA de: Servicios, Materiales y Suministros, "
+        "Transporte y Logistica, Tecnologia y Software, Nomina y RRHH, "
+        "Alquiler e Inmuebles, Publicidad y Marketing, Impuestos y Tasas, Alimentacion, Otros\n\n"
+        "FORMATO EXACTO:\n"
+        '{"proveedor": "nombre", "ruc": "ruc o null", '
+        '"fecha": "DD/MM/AAAA o null", "monto_total": 0.00, '
+        '"subtotal": 0.00, "itbms": 0.00, '
+        '"moneda": "USD", "categoria": "Servicios", '
+        '"descripcion": "breve", "confianza": 85, "notas": null}'
+    )
+
+    stop_event = threading.Event()
+
+    def _llamar_vision(model):
+        nombre = model.split('/')[1].split(':')[0]
+        if stop_event.is_set():
+            return None, nombre
+        try:
+            data = {
+                "model": model,
+                "max_tokens": 500,
+                "temperature": 0.0,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{img_b64}"}},
+                        {"type": "text",      "text": prompt_texto}
+                    ]
+                }]
+            }
+            req = urllib.request.Request(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                data=json.dumps(data).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {API_KEY}",
+                    "HTTP-Referer": "https://automatiapa.pythonanywhere.com",
+                    "X-Title": "AutomatIA Facturas Vision"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if stop_event.is_set():
+                    return None, nombre
+                result = json.loads(resp.read().decode())
+                if "choices" not in result or not result["choices"]:
+                    return None, nombre
+                content = result["choices"][0]["message"]["content"].strip()
+                datos = parsear_json_respuesta(content)
+                if datos and validar_resultado(datos):
+                    datos["fuente"] = "vision"
+                    return datos, nombre
+                return None, nombre
+        except Exception as e:
+            slog("warning", "Vision {}: {}", nombre, str(e))
+            return None, nombre
+
+    with ThreadPoolExecutor(max_workers=len(MODELOS_VISION)) as executor:
+        futuros = {executor.submit(_llamar_vision, m): m for m in MODELOS_VISION}
+        for futuro in as_completed(futuros):
+            datos, nombre = futuro.result()
+            if datos and not stop_event.is_set():
+                stop_event.set()
+                slog("info", "Vision OK: {} con {}", os.path.basename(ruta_archivo), nombre)
+                return datos, nombre
+
+    slog("error", "Todos los modelos vision fallaron: {}", ruta_archivo)
+    return None, None
+
+# ─────────────────────────────────────────
 def parsear_json_respuesta(content):
     if "<think>" in content:
         fin_think = content.find("</think>")
@@ -597,22 +705,17 @@ def parsear_json_respuesta(content):
     return json.loads(content[inicio:fin])
 
 # ─────────────────────────────────────────
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-
-def _llamar_modelo(model, prompt, api_key, stop_event: threading.Event):
-    """Llama a un modelo. Aborta si stop_event ya fue señalado."""
+def _llamar_modelo(model, prompt, api_key):
+    """Llama a un modelo específico. Retorna (datos, nombre_modelo) o (None, None)."""
     nombre = model.split('/')[1].split(':')[0]
-    
-    # Si otro ya respondió, no gastar la llamada
-    if stop_event.is_set():
-        return None, nombre
-    
     try:
         data = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": 500   # ← bajar de 1500 a 500; JSON de factura no necesita más
+            "max_tokens": 1500
         }
         req = urllib.request.Request(
             url="https://openrouter.ai/api/v1/chat/completions",
@@ -625,9 +728,7 @@ def _llamar_modelo(model, prompt, api_key, stop_event: threading.Event):
             },
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=8) as resp:  # ← 15s → 8s
-            if stop_event.is_set():   # chequear de nuevo después del I/O
-                return None, nombre
+        with urllib.request.urlopen(req, timeout=15) as resp:
             result = json.loads(resp.read().decode())
             if "choices" not in result or not result["choices"]:
                 return None, nombre
@@ -644,8 +745,9 @@ def _llamar_modelo(model, prompt, api_key, stop_event: threading.Event):
 
 
 def llamar_ia(texto):
+    # Preprocesar texto: quedarse solo con las primeras líneas útiles
     lineas = [l.strip() for l in texto.splitlines() if l.strip()]
-    texto_limpio = "\n".join(lineas)[:8000].replace('"', "'").replace('\\', '/')  # ← 12000 → 8000
+    texto_limpio = "\n".join(lineas)[:12000].replace('"', "'").replace('\\', '/')
 
     prompt = (
         "Eres un asistente contable experto en facturas de Panama y Latinoamerica.\n"
@@ -674,28 +776,27 @@ def llamar_ia(texto):
         "FACTURA:\n" + texto_limpio
     )
 
-    stop_event = threading.Event()
-    resultado_final = [None, None]  # compartido entre threads
+    # Ronda 1: los 3 modelos más rápidos en paralelo
+    ronda_1 = MODELOS[:3]
+    # Ronda 2: el resto en paralelo si la primera falla
+    ronda_2 = MODELOS[3:]
 
-    # Todos los modelos en una sola ronda — el primero que responda gana
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futuros = {
-            executor.submit(_llamar_modelo, m, prompt, API_KEY, stop_event): m
-            for m in MODELOS
-        }
-        for futuro in as_completed(futuros):
-            datos, nombre = futuro.result()
-            if datos and not stop_event.is_set():
-                stop_event.set()  # señala a los otros threads que paren
-                resultado_final = [datos, nombre]
-                slog("info", "Modelo ganador: {} (confianza: {}%)", nombre, str(datos.get('confianza')))
-                break
-
-    if resultado_final[0]:
-        return resultado_final[0], resultado_final[1]
+    for ronda, modelos in [("1", ronda_1), ("2", ronda_2)]:
+        print(f"   Ronda {ronda}: probando {len(modelos)} modelos en paralelo...")
+        with ThreadPoolExecutor(max_workers=len(modelos)) as executor:
+            futuros = {
+                executor.submit(_llamar_modelo, m, prompt, API_KEY): m
+                for m in modelos
+            }
+            for futuro in as_completed(futuros):
+                datos, nombre = futuro.result()
+                if datos:
+                    print(f"   ✓ Respondió: {nombre} (confianza: {datos.get('confianza')}%)")
+                    return datos, nombre
 
     slog("error", "Todos los modelos fallaron para esta factura")
     return None, None
+
 # ─────────────────────────────────────────
 def guardar_factura(db_path, datos, archivo, modelo):
     categoria = datos.get('categoria', 'Otros')
@@ -754,7 +855,7 @@ def procesar_cliente(nombre_cliente, procesadas):
 
     archivos = [
         f for f in os.listdir(rutas["facturas"])
-        if f.lower().endswith(('.pdf', '.txt', '.xlsx', '.xls', '.xml'))
+        if f.lower().endswith(('.pdf', '.txt', '.xlsx', '.xls', '.xml', '.jpg', '.jpeg', '.png', '.webp'))
     ]
 
     clave = lambda f: f"{nombre_cliente}/{f}"
@@ -792,6 +893,17 @@ def procesar_cliente(nombre_cliente, procesadas):
             else:
                 print("   XML inválido o sin campos mínimos")
                 slog("error", "XML e-Tax inválido: {}", archivo)
+                mover_archivo(ruta, rutas["error"])
+                procesadas.add(clave(archivo))
+                continue
+        elif ext in (".jpg", ".jpeg", ".png", ".webp"):
+            print(f"   Imagen detectada — usando modelo vision...")
+            resultado, modelo = extraer_datos_imagen(ruta)
+            if resultado:
+                resultado['hash'] = file_hash
+            else:
+                print("   Modelos vision fallaron")
+                slog("error", "Vision fallida: {}", archivo)
                 mover_archivo(ruta, rutas["error"])
                 procesadas.add(clave(archivo))
                 continue
