@@ -398,6 +398,96 @@ def dashboard():
     has_mfa = User.has_totp(current_user.id)
     return render_template("dashboard.html", user=current_user, facturas=facturas, has_mfa=has_mfa)
 
+# ── EDITAR CAMPOS DE FACTURA ──────────────────────────────────
+@app.route("/factura/editar", methods=["POST"])
+@login_required
+def editar_factura():
+    validate_csrf()
+    import sqlite3
+
+    try:
+        factura_id = int(request.form.get("factura_id"))
+    except (TypeError, ValueError):
+        flash("ID de factura inválido", "danger")
+        return redirect(url_for("dashboard"))
+
+    # Campos editables con sus límites
+    proveedor   = request.form.get("proveedor",   "").strip()[:200]
+    ruc         = request.form.get("ruc",         "").strip()[:30]
+    fecha       = request.form.get("fecha",       "").strip()[:10]
+    descripcion = request.form.get("descripcion", "").strip()[:300]
+    moneda      = request.form.get("moneda",      "USD").strip()[:5]
+    categoria   = request.form.get("categoria",   "Otros").strip()
+
+    monedas_validas    = {"USD", "PAB", "EUR", "COP", "MXN", "PEN", "CLP", "ARS", "BRL"}
+    categorias_validas = {
+        "Servicios", "Materiales y Suministros", "Transporte y Logistica",
+        "Tecnologia y Software", "Nomina y RRHH", "Alquiler e Inmuebles",
+        "Publicidad y Marketing", "Impuestos y Tasas", "Alimentacion", "Otros"
+    }
+
+    if moneda not in monedas_validas:
+        moneda = "USD"
+    if categoria not in categorias_validas:
+        categoria = "Otros"
+
+    # Numéricos — None si vacío
+    def parse_float(key):
+        val = request.form.get(key, "").strip()
+        if not val:
+            return None
+        try:
+            v = float(val)
+            return v if 0 <= v <= 10_000_000 else None
+        except ValueError:
+            return None
+
+    monto_total = parse_float("monto_total")
+    itbms       = parse_float("itbms")
+    subtotal    = parse_float("subtotal")
+
+    if not proveedor:
+        flash("El proveedor no puede estar vacío", "danger")
+        return redirect(url_for("dashboard"))
+
+    if monto_total is None or monto_total <= 0:
+        flash("El monto total debe ser mayor que cero", "danger")
+        return redirect(url_for("dashboard"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Sin datos aún", "warning")
+        return redirect(url_for("dashboard"))
+
+    with sqlite3.connect(rutas["db"]) as conn:
+        # Verificar que la factura pertenece a este cliente
+        existe = conn.execute(
+            "SELECT 1 FROM facturas WHERE id=?", (factura_id,)
+        ).fetchone()
+        if not existe:
+            flash("Factura no encontrada", "danger")
+            return redirect(url_for("dashboard"))
+
+        conn.execute("""
+            UPDATE facturas
+            SET proveedor=?, ruc=?, fecha=?, monto_total=?,
+                itbms=?, subtotal=?, moneda=?, categoria=?,
+                descripcion=?, confianza=100, fuente='manual',
+                fecha_procesamiento=?
+            WHERE id=?
+        """, (
+            proveedor, ruc or None, fecha or None, monto_total,
+            itbms, subtotal, moneda, categoria,
+            descripcion or None, datetime.now().isoformat(),
+            factura_id
+        ))
+
+    from facturas_processor import exportar_excel
+    exportar_excel(rutas["db"], rutas["excel"])
+
+    flash(f"Factura de '{proveedor}' actualizada correctamente ✓", "success")
+    return redirect(url_for("dashboard"))
+
 # ── APROBAR / RECHAZAR / REVISAR FACTURA ─────────────────────
 @app.route("/factura/estado", methods=["POST"])
 @login_required
