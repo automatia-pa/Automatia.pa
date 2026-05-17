@@ -709,20 +709,26 @@ def cruce_iva(db_path: str, periodo: str | None = None) -> dict:
     para un período YYYY-MM opcional.
 
     Retorna dict con:
-      credito_fiscal  — ITBMS soportado en compras aprobadas
-      debito_fiscal   — ITBMS repercutido en ventas aprobadas
-      saldo           — débito - crédito  (>0 = pagar a DGI, <0 = saldo a favor)
-      total_compras   — base imponible compras
-      total_ventas    — base imponible ventas
-      periodo         — período analizado
-      detalle_compras — lista resumida por proveedor
-      detalle_ventas  — lista resumida por cliente
+      credito_fiscal    — ITBMS soportado en compras aprobadas
+      debito_fiscal     — ITBMS repercutido en ventas aprobadas
+      saldo             — débito - crédito  (>0 = pagar a DGI, <0 = saldo a favor)
+      total_compras     — base imponible compras
+      total_ventas      — base imponible ventas
+      periodo           — período analizado
+      pendientes_periodo — facturas/ventas pendientes en el período (advertencia)
+      detalle_compras   — lista resumida por proveedor
+      detalle_ventas    — lista resumida por cliente
     """
+    # El filtro debe cubrir ambos formatos de fecha que usa el sistema:
+    #   ISO:     AAAA-MM-DD  → "2025-01%" funciona con LIKE directamente
+    #   Panama:  DD/MM/AAAA  → necesita buscar "/MM/AAAA" al final
+    # Usamos OR para capturar ambos en un solo query.
     filtro_periodo = ""
-    params: list = []
+    params_base: list = []
     if periodo:
-        filtro_periodo = " AND fecha LIKE ?"
-        params = [f"{periodo}%"]
+        anio, mes = periodo[:4], periodo[5:7]
+        filtro_periodo = " AND (fecha LIKE ? OR fecha LIKE ?)"
+        params_base = [f"{periodo}%", f"%/{mes}/{anio}"]
 
     try:
         with sqlite3.connect(db_path) as conn:
@@ -736,7 +742,7 @@ def cruce_iva(db_path: str, periodo: str | None = None) -> dict:
                 FROM facturas
                 WHERE estado = 'aprobada' {filtro_periodo}
             """
-            c_row = conn.execute(q_compras, params).fetchone()
+            c_row = conn.execute(q_compras, params_base).fetchone()
             base_compras   = round(float(c_row["base"]), 2)
             credito_fiscal = round(float(c_row["itbms_total"]), 2)
 
@@ -748,7 +754,14 @@ def cruce_iva(db_path: str, periodo: str | None = None) -> dict:
                 FROM facturas
                 WHERE estado = 'aprobada' {filtro_periodo}
                 GROUP BY proveedor ORDER BY itbms DESC
-            """, params).fetchall()
+            """, params_base).fetchall()
+
+            # ── Facturas pendientes en el período (advertencia) ────
+            q_pend_compras = f"""
+                SELECT COUNT(*) AS n FROM facturas
+                WHERE estado IN ('pendiente','en_revision') {filtro_periodo}
+            """
+            pend_compras = conn.execute(q_pend_compras, params_base).fetchone()["n"]
 
             # ── Ventas (IVA débito) ───────────────────────────────
             q_ventas = f"""
@@ -758,7 +771,7 @@ def cruce_iva(db_path: str, periodo: str | None = None) -> dict:
                 FROM ventas
                 WHERE estado = 'aprobada' {filtro_periodo}
             """
-            v_row = conn.execute(q_ventas, params).fetchone()
+            v_row = conn.execute(q_ventas, params_base).fetchone()
             base_ventas   = round(float(v_row["base"]), 2)
             debito_fiscal = round(float(v_row["itbms_total"]), 2)
 
@@ -770,27 +783,35 @@ def cruce_iva(db_path: str, periodo: str | None = None) -> dict:
                 FROM ventas
                 WHERE estado = 'aprobada' {filtro_periodo}
                 GROUP BY cliente ORDER BY itbms DESC
-            """, params).fetchall()
+            """, params_base).fetchall()
+
+            q_pend_ventas = f"""
+                SELECT COUNT(*) AS n FROM ventas
+                WHERE estado IN ('pendiente','en_revision') {filtro_periodo}
+            """
+            pend_ventas = conn.execute(q_pend_ventas, params_base).fetchone()["n"]
 
         saldo = round(debito_fiscal - credito_fiscal, 2)
 
         return {
-            "credito_fiscal":  credito_fiscal,
-            "debito_fiscal":   debito_fiscal,
-            "saldo":           saldo,
-            "saldo_label":     "Saldo a pagar a DGI" if saldo >= 0 else "Saldo a favor del contribuyente",
-            "total_compras":   base_compras,
-            "total_ventas":    base_ventas,
-            "periodo":         periodo or "Todos los períodos",
-            "detalle_compras": [dict(r) for r in det_compras_rows],
-            "detalle_ventas":  [dict(r) for r in det_ventas_rows],
+            "credito_fiscal":     credito_fiscal,
+            "debito_fiscal":      debito_fiscal,
+            "saldo":              saldo,
+            "saldo_label":        "Saldo a pagar a DGI" if saldo >= 0 else "Saldo a favor del contribuyente",
+            "total_compras":      base_compras,
+            "total_ventas":       base_ventas,
+            "periodo":            periodo or "Todos los períodos",
+            "pendientes_periodo": pend_compras + pend_ventas,
+            "detalle_compras":    [dict(r) for r in det_compras_rows],
+            "detalle_ventas":     [dict(r) for r in det_ventas_rows],
         }
     except Exception as e:
         slog("error", "Error cruce_iva: {}", str(e))
         return {
             "credito_fiscal": 0, "debito_fiscal": 0, "saldo": 0,
             "saldo_label": "Error", "total_compras": 0, "total_ventas": 0,
-            "periodo": periodo or "", "detalle_compras": [], "detalle_ventas": [],
+            "periodo": periodo or "", "pendientes_periodo": 0,
+            "detalle_compras": [], "detalle_ventas": [],
             "error": str(e),
         }
 
@@ -964,7 +985,10 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
                     ruc          AS RUC_Proveedor,
                     proveedor    AS Nombre_Proveedor,
                     tipo_doc     AS Tipo_Documento,
-                    archivo      AS Numero_Documento,
+                    COALESCE(
+                        NULLIF(TRIM(cufe),  ''),
+                        NULLIF(TRIM(archivo), '')
+                    )            AS Numero_Documento,
                     cufe         AS CUFE,
                     fecha        AS Fecha_Emision,
                     COALESCE(subtotal, monto_total - COALESCE(itbms, 0)) AS Subtotal,
@@ -977,8 +1001,9 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
             """
             params = []
             if periodo:
-                query += " AND fecha LIKE ?"
-                params.append(f"{periodo}%")
+                anio, mes = periodo[:4], periodo[5:7]
+                query += " AND (fecha LIKE ? OR fecha LIKE ?)"
+                params.extend([f"{periodo}%", f"%/{mes}/{anio}"])
             query += " ORDER BY fecha ASC"
 
             rows = conn.execute(query, params).fetchall()
@@ -1452,22 +1477,29 @@ def guardar_factura(db_path, datos, archivo, modelo):
         return False
 
 # ══════════════════════════════════════════════════════════════
-# FORMULARIO 103 — DECLARACIÓN JURADA DE COMPRAS Y GASTOS
+# REPORTE DE COMPRAS — ANEXO DECLARACIÓN DE ITBMS (F-430)
 #
-# Genera un Excel con el formato que exige la DGI Panamá para el
-# Formulario 103 (Retención de ITBMS en compras a no residentes
-# y declaración de gastos deducibles).
+# Genera un Excel de apoyo para que el contador complete la
+# declaración de ITBMS crédito fiscal ante la DGI (Formulario
+# F-430 o Declaración Jurada de ITBMS, Arts. 1057-V y ss.
+# del Código Fiscal de Panamá y su reglamento Decreto 84 de 2005).
 #
-# Estructura basada en el formulario público DGI F-103 v2020:
+# IMPORTANTE: Este archivo es un reporte de apoyo interno.
+# NO es un formulario oficial de la DGI. El contribuyente debe
+# ingresar los datos manualmente en el portal e-Tax 2.0 o en el
+# formulario físico que corresponda.
+#
+# Estructura:
 #   Sección A — Identificación del declarante
-#   Sección B — Detalle de compras por proveedor (una fila por RUC)
-#   Sección C — Totales
+#   Sección B — Detalle de compras por proveedor/suplidor
+#   Sección C — Totales consolidados
 # ══════════════════════════════════════════════════════════════
-def exportar_formulario103(db_path: str, output_path: str,
-                           nombre_empresa: str, ruc_empresa: str = "",
-                           periodo: str = "") -> dict:
+def exportar_reporte_compras_f430(db_path: str, output_path: str,
+                                  nombre_empresa: str, ruc_empresa: str = "",
+                                  periodo: str = "") -> dict:
     """
-    Genera el Formulario 103 precompletado como archivo Excel.
+    Genera un reporte de compras para apoyar la declaración de
+    ITBMS crédito fiscal (F-430) como archivo Excel.
 
     Args:
         db_path:        Ruta a la base de datos SQLite del cliente.
@@ -1478,7 +1510,7 @@ def exportar_formulario103(db_path: str, output_path: str,
 
     Returns:
         dict con claves: total_proveedores, total_compras,
-                         total_itbms, total_retencion, ruta
+                         total_itbms, ruta
     """
     from openpyxl.styles import (Font, PatternFill, Alignment,
                                  Border, Side, numbers)
@@ -1529,8 +1561,9 @@ def exportar_formulario103(db_path: str, output_path: str,
             """
             params = []
             if periodo:
-                q += " AND fecha LIKE ?"
-                params.append(f"{periodo}%")
+                anio, mes = periodo[:4], periodo[5:7]
+                q += " AND (fecha LIKE ? OR fecha LIKE ?)"
+                params.extend([f"{periodo}%", f"%/{mes}/{anio}"])
             q += " GROUP BY COALESCE(ruc, proveedor) ORDER BY total_compras DESC"
             rows = conn.execute(q, params).fetchall()
     except Exception as e:
@@ -1539,7 +1572,7 @@ def exportar_formulario103(db_path: str, output_path: str,
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Formulario 103"
+    ws.title = "Reporte Compras F430"
 
     # ── ENCABEZADO INSTITUCIONAL ──────────────────────────────
     ws.merge_cells("A1:J1")
@@ -1551,16 +1584,24 @@ def exportar_formulario103(db_path: str, output_path: str,
 
     ws.merge_cells("A2:J2")
     c = ws["A2"]
-    c.value = "FORMULARIO 103 — DECLARACIÓN JURADA DE COMPRAS Y GASTOS (ITBMS)"
+    c.value = "REPORTE DE COMPRAS — APOYO PARA DECLARACIÓN DE ITBMS CRÉDITO FISCAL (Ref. Art. 1057-V Código Fiscal)"
     c.font  = Font(bold=True, size=12, color="FFFFFF")
     c.fill  = PatternFill("solid", fgColor=VERDE_DGI)
     c.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A3:J3")
+    c = ws["A3"]
+    c.value = "⚠ DOCUMENTO DE USO INTERNO — No es un formulario oficial DGI. Ingrese estos datos en el portal e-Tax 2.0 (etax2.mef.gob.pa) al declarar su ITBMS."
+    c.font  = Font(italic=True, size=9, color="7B241C")
+    c.fill  = PatternFill("solid", fgColor="FDEBD0")
+    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[3].height = 24
 
     ws.row_dimensions[1].height = 22
     ws.row_dimensions[2].height = 22
 
     # ── SECCIÓN A — IDENTIFICACIÓN DEL DECLARANTE ─────────────
-    ROW_A = 4
+    ROW_A = 5   # fila 3 = aviso legal, fila 4 = espacio
     ws.merge_cells(f"A{ROW_A}:J{ROW_A}")
     c = ws.cell(row=ROW_A, column=1, value="SECCIÓN A — IDENTIFICACIÓN DEL DECLARANTE")
     c.font = Font(bold=True, size=10, color="FFFFFF")
@@ -1591,16 +1632,15 @@ def exportar_formulario103(db_path: str, output_path: str,
     c.alignment = Alignment(horizontal="left", vertical="center")
 
     COLS_B = [
-        ("N°",                  5),
-        ("RUC del Proveedor",  18),
+        ("N°",                   5),
+        ("RUC del Proveedor",   18),
         ("Nombre / Razón Social", 32),
-        ("Categoría",          18),
-        ("N° Facturas",        12),
-        ("Última Fecha",       14),
-        ("Base Imponible\n(Subtotal)", 16),
-        ("ITBMS\nDeclarado",   14),
-        ("Retención\n(1% ITBMS)", 14),
-        ("Total\nCompras",     14),
+        ("Categoría",           18),
+        ("N° Facturas",         12),
+        ("Última Fecha",        14),
+        ("Base Imponible\n(Subtotal)", 18),
+        ("ITBMS\nCrédito Fiscal", 18),
+        ("Total\nCompras",      16),
     ]
     ROW_HDR = ROW_B + 1
     for ci, (label, _) in enumerate(COLS_B, 1):
@@ -1615,7 +1655,6 @@ def exportar_formulario103(db_path: str, output_path: str,
     total_compras   = 0.0
     total_itbms_sum = 0.0
     total_subtotal  = 0.0
-    total_retencion = 0.0
 
     for idx, row in enumerate(rows, 1):
         r = ROW_HDR + idx
@@ -1624,12 +1663,10 @@ def exportar_formulario103(db_path: str, output_path: str,
         tc  = float(row["total_compras"]  or 0)
         ti  = float(row["total_itbms"]    or 0)
         ts  = float(row["total_subtotal"] or 0)
-        ret = round(ti * 0.01, 2)   # retención del 1% sobre ITBMS pagado
 
         total_compras   += tc
         total_itbms_sum += ti
         total_subtotal  += ts
-        total_retencion += ret
 
         data_cell(ws, r, 1,  idx,                            align="center", bg=bg)
         data_cell(ws, r, 2,  row["ruc"] or "SIN RUC",       bg=bg)
@@ -1639,23 +1676,21 @@ def exportar_formulario103(db_path: str, output_path: str,
         data_cell(ws, r, 6,  row["ultima_fecha"] or "",      align="center", bg=bg)
         data_cell(ws, r, 7,  ts,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
         data_cell(ws, r, 8,  ti,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
-        data_cell(ws, r, 9,  ret, fmt='#,##0.00 "B/."',     align="right", bg=bg)
-        data_cell(ws, r, 10, tc,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
+        data_cell(ws, r, 9,  tc,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
 
     # ── SECCIÓN C — TOTALES ───────────────────────────────────
     ROW_TOT = ROW_HDR + len(rows) + 2
-    ws.merge_cells(f"A{ROW_TOT}:J{ROW_TOT}")
+    ws.merge_cells(f"A{ROW_TOT}:I{ROW_TOT}")
     c = ws.cell(row=ROW_TOT, column=1, value="SECCIÓN C — TOTALES")
     c.font = Font(bold=True, size=10, color="FFFFFF")
     c.fill = PatternFill("solid", fgColor="2E86C1")
     c.alignment = Alignment(horizontal="left", vertical="center")
 
     tot_labels = [
-        ("Total Proveedores Declarados:", len(rows),            None),
-        ("Total Base Imponible:",          total_subtotal,  '#,##0.00 "B/."'),
-        ("Total ITBMS Declarado:",         total_itbms_sum, '#,##0.00 "B/."'),
-        ("Total Retención (1%):",          total_retencion, '#,##0.00 "B/."'),
-        ("TOTAL GENERAL COMPRAS:",         total_compras,   '#,##0.00 "B/."'),
+        ("Total Proveedores / Suplidores:",  len(rows),           None),
+        ("Total Base Imponible (Subtotal):", total_subtotal,  '#,##0.00 "B/."'),
+        ("Total ITBMS Crédito Fiscal:",      total_itbms_sum, '#,##0.00 "B/."'),
+        ("TOTAL GENERAL COMPRAS:",           total_compras,   '#,##0.00 "B/."'),
     ]
     for ti_idx, (label, val, fmt) in enumerate(tot_labels):
         r = ROW_TOT + 1 + ti_idx
@@ -1666,7 +1701,7 @@ def exportar_formulario103(db_path: str, output_path: str,
         lc.alignment = Alignment(horizontal="right", vertical="center")
         lc.border = borde
 
-        ws.merge_cells(f"G{r}:J{r}")
+        ws.merge_cells(f"G{r}:I{r}")
         vc = ws.cell(row=r, column=7, value=val)
         vc.font = Font(bold=True, size=10)
         vc.fill = PatternFill("solid", fgColor=AMARILLO)
@@ -1675,30 +1710,32 @@ def exportar_formulario103(db_path: str, output_path: str,
         if fmt:
             vc.number_format = fmt
 
-    # ── NOTA LEGAL ────────────────────────────────────────────
+    # ── NOTA LEGAL CORRECTA ────────────────────────────────────
     ROW_NOTA = ROW_TOT + len(tot_labels) + 2
-    ws.merge_cells(f"A{ROW_NOTA}:J{ROW_NOTA}")
+    ws.merge_cells(f"A{ROW_NOTA}:I{ROW_NOTA}")
     nota = (
-        "NOTA: Este formulario es generado automáticamente por AutomatIA a partir de las facturas "
-        "aprobadas en el sistema. Verifique los datos antes de presentar ante la DGI. "
-        "La retención del 1% aplica según el Art. 1057-V del Código Fiscal."
+        "NOTA: Reporte generado por AutomatIA como apoyo contable. "
+        "El ITBMS Crédito Fiscal corresponde al impuesto soportado en compras "
+        "aprobadas, deducible del débito fiscal según el Art. 1057-V del Código Fiscal "
+        "y el Decreto Ejecutivo 84 de 2005. "
+        "Verifique y complete la declaración oficial en el portal e-Tax 2.0 (etax2.mef.gob.pa). "
+        "Este documento no reemplaza ningún formulario oficial de la DGI."
     )
     nc = ws.cell(row=ROW_NOTA, column=1, value=nota)
     nc.font = Font(italic=True, size=8, color="555555")
     nc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    ws.row_dimensions[ROW_NOTA].height = 30
+    ws.row_dimensions[ROW_NOTA].height = 40
 
     try:
         wb.save(output_path)
     except Exception as e:
-        slog("error", "F103 error guardando Excel: {}", str(e))
+        slog("error", "Reporte compras F430 error guardando Excel: {}", str(e))
         return {"error": str(e)}
 
     return {
         "total_proveedores": len(rows),
         "total_compras":     round(total_compras, 2),
         "total_itbms":       round(total_itbms_sum, 2),
-        "total_retencion":   round(total_retencion, 2),
         "ruta":              output_path,
     }
 

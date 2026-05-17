@@ -13,7 +13,7 @@ from datetime import timedelta, datetime
 from models import User, db_init
 from facturas_processor import (procesar_cliente, procesar_cliente_ventas,
                                 get_rutas_cliente, exportar_dgi_csv,
-                                validar_ruc_dgi, exportar_formulario103,
+                                validar_ruc_dgi, exportar_reporte_compras_f430,
                                 calcular_itbms_esperado, verificar_itbms,
                                 listar_ventas, cruce_iva, exportar_excel_ventas,
                                 exportar_excel)
@@ -911,12 +911,13 @@ def api_verificar_itbms():
 
 
 # ══════════════════════════════════════════════════════════════
-# FORMULARIO 103 — DESCARGA
-# Genera el F103 precompletado con las facturas aprobadas del cliente.
+# REPORTE DE COMPRAS F430 — DESCARGA
+# Genera un Excel de apoyo para la declaración de ITBMS crédito
+# fiscal. NO es un formulario oficial DGI.
 # ══════════════════════════════════════════════════════════════
-@app.route("/download-formulario103")
+@app.route("/download-reporte-compras")
 @login_required
-def download_formulario103():
+def download_reporte_compras():
     periodo = request.args.get("periodo", "").strip()
 
     if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
@@ -928,10 +929,10 @@ def download_formulario103():
         flash("Aún no tienes facturas procesadas", "warning")
         return redirect(url_for("dashboard"))
 
-    sufijo   = f"_{periodo}" if periodo else ""
-    f103_path = os.path.join(rutas["base"], f"formulario103{sufijo}.xlsx")
+    sufijo     = f"_{periodo}" if periodo else ""
+    reporte_path = os.path.join(rutas["base"], f"reporte_compras_f430{sufijo}.xlsx")
 
-    # RUC del cliente: buscamos en sus propias facturas como receptor, o dejamos vacío
+    # RUC del cliente: buscamos en sus propias facturas como receptor
     ruc_empresa = ""
     try:
         with sqlite3.connect(rutas["db"]) as conn:
@@ -943,30 +944,31 @@ def download_formulario103():
     except Exception:
         pass
 
-    resultado = exportar_formulario103(
-        db_path       = rutas["db"],
-        output_path   = f103_path,
-        nombre_empresa= current_user.nombre,
-        ruc_empresa   = ruc_empresa,
-        periodo       = periodo or "",
+    resultado = exportar_reporte_compras_f430(
+        db_path        = rutas["db"],
+        output_path    = reporte_path,
+        nombre_empresa = current_user.nombre,
+        ruc_empresa    = ruc_empresa,
+        periodo        = periodo or "",
     )
 
     if "error" in resultado:
-        flash(f"Error generando el Formulario 103: {resultado['error']}", "danger")
+        flash(f"Error generando el reporte: {resultado['error']}", "danger")
         return redirect(url_for("dashboard"))
 
     if resultado.get("total_proveedores", 0) == 0:
-        flash("No hay facturas aprobadas para incluir en el Formulario 103.", "warning")
+        flash("No hay facturas aprobadas para incluir en el reporte de compras.", "warning")
         return redirect(url_for("dashboard"))
 
     flash(
-        f"Formulario 103 generado: {resultado['total_proveedores']} proveedores, "
+        f"Reporte de compras generado: {resultado['total_proveedores']} proveedores, "
         f"Total compras B/.{resultado['total_compras']:,.2f}, "
-        f"ITBMS B/.{resultado['total_itbms']:,.2f}",
+        f"ITBMS crédito B/.{resultado['total_itbms']:,.2f}. "
+        f"Recuerde ingresar estos datos en el portal e-Tax 2.0.",
         "success"
     )
-    return send_file(f103_path, as_attachment=True,
-                     download_name=f"formulario103{sufijo}.xlsx")
+    return send_file(reporte_path, as_attachment=True,
+                     download_name=f"reporte_compras_f430{sufijo}.xlsx")
 
 
 # ══════════════════════════════════════════════════════════════
