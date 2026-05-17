@@ -267,6 +267,7 @@ def set_security_headers(response):
         f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com; "
         f"font-src https://fonts.gstatic.com; "
         f"img-src 'self' data:; "
+        f"object-src 'self'; "
         f"connect-src 'self'; "
         f"frame-ancestors 'none';"
     )
@@ -592,11 +593,30 @@ def ver_factura(factura_id):
     if not archivo:
         abort(404)
 
+    # Mapear extensión a MIME type para visualización inline correcta
+    ext = os.path.splitext(archivo)[1].lower()
+    _MIME_MAP = {
+        ".pdf":  "application/pdf",
+        ".png":  "image/png",
+        ".jpg":  "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".txt":  "text/plain; charset=utf-8",
+        ".xml":  "text/xml; charset=utf-8",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls":  "application/vnd.ms-excel",
+    }
+    mime = _MIME_MAP.get(ext, "application/octet-stream")
+    # Tipos visualizables inline — el resto se descarga
+    _INLINE_TYPES = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".xml"}
+    as_attachment = ext not in _INLINE_TYPES
+
     # Buscar en procesados primero, luego en la carpeta activa
     for carpeta in [rutas["procesados"], rutas["facturas"]]:
         ruta = os.path.join(carpeta, archivo)
         if os.path.exists(ruta):
-            return send_file(ruta, as_attachment=False)
+            return send_file(ruta, mimetype=mime, as_attachment=as_attachment,
+                             download_name=archivo)
 
     abort(404)
 

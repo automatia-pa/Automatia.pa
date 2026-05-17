@@ -457,6 +457,10 @@
               {% endif %}
             </td>
             <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+              <a href="/factura/ver/{{ f.get('id') }}" target="_blank" rel="noopener"
+                 class="action-btn btn-ver" title="Ver archivo original en nueva pestaña">
+                👁 Ver
+              </a>
               <button class="action-btn btn-gestionar"
                       data-idx="{{ fid }}"
                       data-proveedor="{{ f.get('Proveedor', '')|e }}"
