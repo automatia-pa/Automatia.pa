@@ -6,7 +6,7 @@
 <title>AutomatIA — Automatizacion de Facturas con IA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<style>
+<style nonce="{{ csp_nonce() }}">
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg: #060910; --surface: #0d1117; --surface2: #121820;
@@ -611,7 +611,7 @@
   </div>
 </footer>
 
-<script>
+<script nonce="{{ csp_nonce() }}">
   // ── Scroll reveal ──
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("visible"); });
