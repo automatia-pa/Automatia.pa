@@ -144,8 +144,41 @@
   .btn-guardar { background:var(--accent); color:#030F0D; border:none; border-radius:100px; padding:0.6rem 1.5rem; font-size:0.88rem; font-weight:600; cursor:pointer; font-family:"DM Sans",sans-serif; transition:opacity 0.2s; }
   .btn-guardar:hover { opacity:0.9; }
  
+
+  /* BARRA DE FILTROS */
+  .filter-bar { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; padding:1rem 1.5rem; border-bottom:1px solid var(--border); background:var(--surface2); }
+  .filter-search { flex:1; min-width:200px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:0.55rem 0.9rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.88rem; outline:none; transition:border-color 0.2s; }
+  .filter-search:focus { border-color:rgba(0,229,195,0.4); }
+  .filter-search::placeholder { color:var(--muted); }
+  .filter-select { background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:0.55rem 0.85rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.82rem; outline:none; cursor:pointer; }
+  .filter-select option { background:#0d1117; }
+  .filter-count { font-size:0.78rem; color:var(--muted); margin-left:auto; white-space:nowrap; }
+  .filter-reset { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:0.45rem 0.85rem; font-size:0.78rem; cursor:pointer; font-family:"DM Sans",sans-serif; transition:all 0.2s; }
+  .filter-reset:hover { border-color:rgba(248,113,113,0.4); color:var(--error); }
+  tr.hidden-row { display:none; }
+
+  /* INSIGHTS ACCIONABLES */
+  .insights { display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem; }
+  .insight-card { flex:1; min-width:200px; border-radius:14px; padding:1rem 1.25rem; display:flex; align-items:center; gap:0.85rem; border:1px solid; }
+  .insight-card.warn  { background:rgba(245,158,11,0.07); border-color:rgba(245,158,11,0.2); }
+  .insight-card.info  { background:rgba(59,130,246,0.07); border-color:rgba(59,130,246,0.2); }
+  .insight-card.alert { background:rgba(248,113,113,0.07); border-color:rgba(248,113,113,0.2); }
+  .insight-card.ok    { background:rgba(52,211,153,0.07); border-color:rgba(52,211,153,0.2); }
+  .insight-icon { font-size:1.5rem; flex-shrink:0; }
+  .insight-text strong { display:block; font-size:0.9rem; font-weight:600; }
+  .insight-text span   { font-size:0.78rem; color:var(--muted); line-height:1.4; }
+  .insight-card.warn  .insight-text strong { color:var(--accent3); }
+  .insight-card.info  .insight-text strong { color:var(--accent2); }
+  .insight-card.alert .insight-text strong { color:var(--error);   }
+  .insight-card.ok    .insight-text strong { color:var(--success);  }
+
+  /* BTN VER */
+  .btn-ver { text-decoration:none; display:inline-flex; align-items:center; }
   @media (max-width: 768px) {
     .metrics { grid-template-columns: repeat(2, 1fr); }
+    .insights { flex-direction:column; }
+    .filter-bar { flex-direction:column; align-items:stretch; }
+    .filter-count { margin-left:0; }
     table { font-size: 0.78rem; }
     th, td { padding: 0.6rem 0.75rem; }
   }
@@ -230,6 +263,66 @@
   </div>
   {% endif %}
  
+
+  <!-- INSIGHTS ACCIONABLES -->
+  {% if facturas %}
+  {% set pendientes_viejas = [] %}
+  {% set baja_confianza = [] %}
+  {% set posibles_duplicados = [] %}
+  {% for f in facturas %}
+    {% if f.get('Estado','pendiente') == 'pendiente' and f.get('Fecha_Procesado') %}
+      {# Solo marcamos si el campo existe; el filtro de días lo hace el backend #}
+    {% endif %}
+  {% endfor %}
+  <div class="insights">
+    {% if insights.pendientes_antiguas > 0 %}
+    <div class="insight-card warn">
+      <div class="insight-icon">⏳</div>
+      <div class="insight-text">
+        <strong>{{ insights.pendientes_antiguas }} factura{{ 's' if insights.pendientes_antiguas > 1 }} sin revisar</strong>
+        <span>Llevan más de 7 días en estado "pendiente" sin acción.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.baja_confianza > 0 %}
+    <div class="insight-card alert">
+      <div class="insight-icon">⚠️</div>
+      <div class="insight-text">
+        <strong>{{ insights.baja_confianza }} con confianza baja (&lt;70%)</strong>
+        <span>La IA tuvo dificultad. Verifica los datos manualmente.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.posibles_duplicados > 0 %}
+    <div class="insight-card info">
+      <div class="insight-icon">🔁</div>
+      <div class="insight-text">
+        <strong>{{ insights.posibles_duplicados }} posible{{ 's' if insights.posibles_duplicados > 1 }} duplicado{{ 's' if insights.posibles_duplicados > 1 }}</strong>
+        <span>Mismo proveedor, monto y fecha en más de una factura.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.aprobadas_hoy > 0 %}
+    <div class="insight-card ok">
+      <div class="insight-icon">✅</div>
+      <div class="insight-text">
+        <strong>{{ insights.aprobadas_hoy }} aprobada{{ 's' if insights.aprobadas_hoy > 1 }} hoy</strong>
+        <span>Listas para incluir en la próxima exportación DGI.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.pendientes_antiguas == 0 and insights.baja_confianza == 0 and insights.posibles_duplicados == 0 %}
+    <div class="insight-card ok">
+      <div class="insight-icon">✅</div>
+      <div class="insight-text">
+        <strong>Todo en orden</strong>
+        <span>No hay facturas pendientes de atención inmediata.</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- BANNER DE PROCESAMIENTO EN BACKGROUND -->
   <div id="processingBanner" style="display:none;" class="flash" style="margin-bottom:1.5rem;">
     <span id="processingMsg"></span>
@@ -263,6 +356,33 @@
       {% endif %}
     </div>
  
+    {% if facturas %}
+    <div class="filter-bar">
+      <input type="search" id="searchInput" class="filter-search" placeholder="🔍  Buscar proveedor, RUC, archivo...">
+      <select id="filterEstado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="pendiente">Pendiente</option>
+        <option value="aprobada">Aprobada</option>
+        <option value="en_revision">En Revisión</option>
+        <option value="rechazada">Rechazada</option>
+      </select>
+      <select id="filterCategoria" class="filter-select">
+        <option value="">Todas las categorías</option>
+        <option>Servicios</option>
+        <option>Materiales y Suministros</option>
+        <option>Transporte y Logistica</option>
+        <option>Tecnologia y Software</option>
+        <option>Nomina y RRHH</option>
+        <option>Alquiler e Inmuebles</option>
+        <option>Publicidad y Marketing</option>
+        <option>Impuestos y Tasas</option>
+        <option>Alimentacion</option>
+        <option>Otros</option>
+      </select>
+      <button class="filter-reset" id="btnResetFiltros">✕ Limpiar</button>
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+    {% endif %}
     {% if not facturas %}
       <div class="empty-state">
         <div class="empty-icon">&#128196;</div>
@@ -286,7 +406,12 @@
         <tbody>
           {% for f in facturas %}
           {% set fid = loop.index %}
-          <tr>
+          <tr class="factura-row"
+              data-proveedor="{{ f.get('Proveedor','') | lower }}"
+              data-ruc="{{ f.get('RUC','') | lower }}"
+              data-archivo="{{ f.get('Archivo','') | lower }}"
+              data-estado="{{ f.get('Estado','pendiente') or 'pendiente' }}"
+              data-categoria="{{ f.get('Categoria','Otros') | lower }}">
             <td>
               <div class="td-proveedor">{{ f.get('Proveedor', '') }}</div>
               <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">{{ f.get('Archivo', '')[:30] }}</div>
@@ -477,9 +602,9 @@
   const fileList = document.getElementById('fileList');
   const uploadBtn = document.getElementById('uploadBtn');
   const dropZone = document.getElementById('dropZone');
- 
+
   input.addEventListener('change', () => showFiles(input.files));
- 
+
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => {
@@ -488,7 +613,7 @@
     input.files = e.dataTransfer.files;
     showFiles(e.dataTransfer.files);
   });
- 
+
   function showFiles(files) {
     fileList.innerHTML = '';
     if (files.length === 0) { uploadBtn.style.display = 'none'; return; }
@@ -502,84 +627,52 @@
     });
     uploadBtn.style.display = 'block';
   }
- 
+
   // ── Event delegation — reemplaza todos los onclick inline ──
-  // (necesario para cumplir con CSP nonce; onclick="" está bloqueado)
   document.addEventListener('click', function(e) {
-    // Botón Gestionar
     const gBtn = e.target.closest('.btn-gestionar');
-    if (gBtn) {
-      abrirModal(
-        parseInt(gBtn.dataset.idx),
-        gBtn.dataset.proveedor,
-        gBtn.dataset.estado
-      );
-      return;
-    }
-    // Botón Editar
+    if (gBtn) { abrirModal(parseInt(gBtn.dataset.idx), gBtn.dataset.proveedor, gBtn.dataset.estado); return; }
     const eBtn = e.target.closest('.btn-editar');
-    if (eBtn) {
-      abrirEdicion(parseInt(eBtn.dataset.idx));
-      return;
-    }
-    // Cerrar modal gestionar
-    if (e.target.closest('.btn-cerrar-modal')) {
-      document.getElementById('modalOverlay').classList.remove('open');
-      return;
-    }
-    // Cerrar modal edición
-    if (e.target.closest('.btn-cerrar-edicion')) {
-      document.getElementById('editOverlay').classList.remove('open');
-      return;
-    }
-    // Click en overlay (fondo) para cerrar
-    if (e.target.id === 'modalOverlay') {
-      document.getElementById('modalOverlay').classList.remove('open');
-    }
-    if (e.target.id === 'editOverlay') {
-      document.getElementById('editOverlay').classList.remove('open');
-    }
+    if (eBtn) { abrirEdicion(parseInt(eBtn.dataset.idx)); return; }
+    if (e.target.closest('.btn-cerrar-modal'))   { document.getElementById('modalOverlay').classList.remove('open'); return; }
+    if (e.target.closest('.btn-cerrar-edicion')) { document.getElementById('editOverlay').classList.remove('open'); return; }
+    if (e.target.id === 'modalOverlay') { document.getElementById('modalOverlay').classList.remove('open'); }
+    if (e.target.id === 'editOverlay')  { document.getElementById('editOverlay').classList.remove('open'); }
+    if (e.target.id === 'btnResetFiltros') { resetFiltros(); }
   });
- 
+
   // ── Modal de aprobación ──────────────────────────────────
-  // Mapa de índice de fila → ID real de la factura en DB
   const facturaIds = {{ facturas | map(attribute='id') | list | tojson if facturas else '[]' }};
- 
+
   function abrirModal(idx, proveedor, estadoActual) {
     const realId = facturaIds[idx - 1];
     document.getElementById('modalFacturaId').value = realId;
     document.getElementById('modalTitle').textContent = 'Gestionar Factura';
     document.getElementById('modalSub').textContent = proveedor;
     document.getElementById('modalComentario').value = '';
- 
-    // Marcar radio del estado actual
-    document.querySelectorAll('.estado-opcion input').forEach(r => {
-      r.checked = (r.value === estadoActual);
-    });
- 
+    document.querySelectorAll('.estado-opcion input').forEach(r => { r.checked = (r.value === estadoActual); });
     document.getElementById('modalOverlay').classList.add('open');
   }
- 
+
   function cerrarModal(e) {
     if (!e || e.target === document.getElementById('modalOverlay') || e.target.classList.contains('modal-close') || e.currentTarget.tagName === 'BUTTON') {
       document.getElementById('modalOverlay').classList.remove('open');
     }
   }
- 
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       document.getElementById('modalOverlay').classList.remove('open');
       document.getElementById('editOverlay').classList.remove('open');
     }
   });
- 
+
   // ── Modal de edición de campos ───────────────────────────
- function abrirEdicion(idx) {
+  function abrirEdicion(idx) {
     const factura = facturas[idx - 1];
     const realId  = facturaIds[idx - 1];
     document.getElementById('editFacturaId').value = realId;
     document.getElementById('editSub').textContent = factura.Archivo || 'Factura';
- 
     document.getElementById('editProveedor').value   = factura.Proveedor  || '';
     document.getElementById('editRuc').value         = factura.RUC        || '';
     document.getElementById('editFecha').value       = factura.Fecha      || '';
@@ -587,27 +680,70 @@
     document.getElementById('editItbms').value       = factura.ITBMS      != null ? factura.ITBMS      : '';
     document.getElementById('editSubtotal').value    = factura.Subtotal   != null ? factura.Subtotal   : '';
     document.getElementById('editDescripcion').value = factura.Descripcion || '';
- 
     const monedaEl = document.getElementById('editMoneda');
     for (let opt of monedaEl.options) opt.selected = (opt.value === (factura.Moneda || 'USD'));
- 
     const catEl = document.getElementById('editCategoria');
     for (let opt of catEl.options) opt.selected = (opt.value === (factura.Categoria || 'Otros'));
- 
     document.getElementById('editOverlay').classList.add('open');
   }
- 
+
   function cerrarEdicion(e) {
     if (!e || e.target === document.getElementById('editOverlay') || e.target.classList.contains('modal-close') || e.currentTarget.tagName === 'BUTTON') {
       document.getElementById('editOverlay').classList.remove('open');
     }
   }
- 
+
+  // ── FILTROS DE TABLA ─────────────────────────────────────
+  const searchInput    = document.getElementById('searchInput');
+  const filterEstado   = document.getElementById('filterEstado');
+  const filterCategoria= document.getElementById('filterCategoria');
+  const filterCountEl  = document.getElementById('filterCount');
+
+  function aplicarFiltros() {
+    const q      = (searchInput   ? searchInput.value.toLowerCase().trim()   : '');
+    const estado = (filterEstado  ? filterEstado.value.toLowerCase()         : '');
+    const cat    = (filterCategoria ? filterCategoria.value.toLowerCase()    : '');
+    const rows   = document.querySelectorAll('.factura-row');
+    let visible  = 0;
+    rows.forEach(row => {
+      const prov  = row.dataset.proveedor || '';
+      const ruc   = row.dataset.ruc       || '';
+      const arch  = row.dataset.archivo   || '';
+      const est   = row.dataset.estado    || '';
+      const catR  = row.dataset.categoria || '';
+      const matchQ   = !q      || prov.includes(q) || ruc.includes(q) || arch.includes(q);
+      const matchEst = !estado || est === estado;
+      const matchCat = !cat    || catR.includes(cat.toLowerCase());
+      if (matchQ && matchEst && matchCat) { row.classList.remove('hidden-row'); visible++; }
+      else                                { row.classList.add('hidden-row'); }
+    });
+    if (filterCountEl) {
+      filterCountEl.textContent = visible === rows.length
+        ? rows.length + ' facturas'
+        : visible + ' de ' + rows.length + ' facturas';
+    }
+  }
+
+  function resetFiltros() {
+    if (searchInput)     searchInput.value = '';
+    if (filterEstado)    filterEstado.value = '';
+    if (filterCategoria) filterCategoria.value = '';
+    aplicarFiltros();
+  }
+
+  if (searchInput)     searchInput.addEventListener('input',  aplicarFiltros);
+  if (filterEstado)    filterEstado.addEventListener('change', aplicarFiltros);
+  if (filterCategoria) filterCategoria.addEventListener('change', aplicarFiltros);
+
+  // Inicializar contador
+  window.addEventListener('DOMContentLoaded', aplicarFiltros);
+  setTimeout(aplicarFiltros, 100);
+
   // ── Polling de estado de procesamiento ──────────────────────
   const banner  = document.getElementById('processingBanner');
   const bannerMsg = document.getElementById('processingMsg');
   let pollTimer = null;
- 
+
   function checkJobStatus() {
     fetch('/upload/status')
       .then(r => r.json())
@@ -633,15 +769,12 @@
       })
       .catch(() => {});
   }
- 
-  // Iniciar polling si hay un flash de "subido"
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}{% if 'segundo plano' in msg %}
   setTimeout(checkJobStatus, 1500);
     {% endif %}{% endfor %}
   {% endwith %}
- 
-  // También verificar al cargar por si quedó un job corriendo
   checkJobStatus();
 </script>
 {% if facturas %}

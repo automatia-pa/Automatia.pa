@@ -524,7 +524,79 @@ def dashboard():
             pass
 
     has_mfa = User.has_totp(current_user.id)
-    return render_template("dashboard.html", user=current_user, facturas=facturas, has_mfa=has_mfa)
+
+    # ── Insights accionables ──────────────────────────────────
+    insights = {"pendientes_antiguas": 0, "baja_confianza": 0,
+                "posibles_duplicados": 0, "aprobadas_hoy": 0}
+    hoy = datetime.now().date()
+    vistos = {}  # clave: (proveedor_lower, monto_redondeado, fecha) → count
+
+    for f in facturas:
+        estado  = f.get("Estado", "pendiente") or "pendiente"
+        conf    = f.get("Confianza", 100) or 100
+        fp      = f.get("Fecha_Procesado") or ""
+        adv     = f.get("Advertencias_Fiscales") or ""  # puede venir None
+
+        # Facturas pendientes sin tocar hace más de 7 días
+        if estado == "pendiente" and fp:
+            try:
+                dias = (hoy - datetime.fromisoformat(fp[:10]).date()).days
+                if dias >= 7:
+                    insights["pendientes_antiguas"] += 1
+            except (ValueError, TypeError):
+                pass
+
+        # Confianza baja y aún pendiente
+        if conf < 70 and estado == "pendiente":
+            insights["baja_confianza"] += 1
+
+        # Aprobadas hoy
+        if estado == "aprobada" and fp and fp[:10] == hoy.isoformat():
+            insights["aprobadas_hoy"] += 1
+
+        # Posibles duplicados por contenido (mismo proveedor+monto+fecha)
+        prov  = (f.get("Proveedor") or "").strip().lower()
+        monto = round(float(f.get("Monto_Total") or 0), 0)
+        fecha = (f.get("Fecha") or "").strip()
+        if prov and monto and fecha:
+            key = (prov, monto, fecha)
+            vistos[key] = vistos.get(key, 0) + 1
+
+    insights["posibles_duplicados"] = sum(1 for v in vistos.values() if v > 1)
+
+    return render_template("dashboard.html", user=current_user, facturas=facturas,
+                           has_mfa=has_mfa, insights=insights)
+
+# ── VER FACTURA ORIGINAL ─────────────────────────────────────
+@app.route("/factura/ver/<int:factura_id>")
+@login_required
+def ver_factura(factura_id):
+    """Sirve el archivo original de la factura para verlo en el browser."""
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        abort(404)
+
+    with sqlite3.connect(rutas["db"]) as conn:
+        row = conn.execute(
+            "SELECT archivo FROM facturas WHERE id=?", (factura_id,)
+        ).fetchone()
+
+    if not row:
+        abort(404)
+
+    # Seguridad: basename previene path traversal
+    archivo = os.path.basename(row[0] or "")
+    if not archivo:
+        abort(404)
+
+    # Buscar en procesados primero, luego en la carpeta activa
+    for carpeta in [rutas["procesados"], rutas["facturas"]]:
+        ruta = os.path.join(carpeta, archivo)
+        if os.path.exists(ruta):
+            return send_file(ruta, as_attachment=False)
+
+    abort(404)
+
 
 # ── EDITAR CAMPOS DE FACTURA ──────────────────────────────────
 @app.route("/factura/editar", methods=["POST"])

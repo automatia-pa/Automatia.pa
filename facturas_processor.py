@@ -810,6 +810,33 @@ def guardar_factura(db_path, datos, archivo, modelo):
 
     # ── PATCH 3: guardar advertencias fiscales en la DB ──────
     _, advertencias = validar_campos_fiscales(datos)
+
+    # ── Detección de duplicados por contenido ────────────────
+    # Igual proveedor (ignora mayúsculas) + mismo monto + misma fecha
+    # → avisa sin bloquear, para que el usuario lo revise
+    try:
+        proveedor_nuevo = (datos.get('proveedor') or '').strip().lower()
+        monto_nuevo     = round(float(datos.get('monto_total') or 0), 2)
+        fecha_nueva     = (datos.get('fecha') or '').strip()
+
+        if proveedor_nuevo and monto_nuevo and fecha_nueva:
+            with sqlite3.connect(db_path) as conn:
+                dup = conn.execute("""
+                    SELECT archivo FROM facturas
+                    WHERE LOWER(TRIM(proveedor)) = ?
+                      AND ROUND(monto_total, 2) = ?
+                      AND fecha = ?
+                    LIMIT 1
+                """, (proveedor_nuevo, monto_nuevo, fecha_nueva)).fetchone()
+            if dup:
+                advertencias.append(
+                    f"⚠ POSIBLE DUPLICADO: misma combinación proveedor/monto/fecha "
+                    f"ya existe en '{dup[0]}'"
+                )
+                slog("warning", "Posible duplicado por contenido: {} ≈ {}", archivo, dup[0])
+    except Exception as e:
+        slog("warning", "Error en detección de duplicados: {}", str(e))
+
     advertencias_str = " | ".join(advertencias) if advertencias else None
 
     try:
