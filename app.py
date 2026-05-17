@@ -11,10 +11,12 @@ import sqlite3
 from datetime import timedelta, datetime
 
 from models import User, db_init
-from facturas_processor import (procesar_cliente, get_rutas_cliente,
-                                exportar_dgi_csv, validar_ruc_dgi,
-                                exportar_formulario103, calcular_itbms_esperado,
-                                verificar_itbms)
+from facturas_processor import (procesar_cliente, procesar_cliente_ventas,
+                                get_rutas_cliente, exportar_dgi_csv,
+                                validar_ruc_dgi, exportar_formulario103,
+                                calcular_itbms_esperado, verificar_itbms,
+                                listar_ventas, cruce_iva, exportar_excel_ventas,
+                                exportar_excel)
 
 app = Flask(__name__)
 
@@ -297,6 +299,16 @@ def _run_background(nombre_cliente, archivos_guardados):
         import logging, traceback
         logging.error(f"Error en _run_background [{nombre_cliente}]: {e}\n{traceback.format_exc()}")
         _job_set(nombre_cliente, "error", "Error interno")
+
+def _run_background_ventas(nombre_cliente, archivos_guardados):
+    _job_set(f"ventas_{nombre_cliente}", "processing", "Procesando ventas...")
+    try:
+        procesar_cliente_ventas(nombre_cliente, set())
+        _job_set(f"ventas_{nombre_cliente}", "done", f"{archivos_guardados} venta(s) procesada(s)")
+    except Exception as e:
+        import logging, traceback
+        logging.error(f"Error en _run_background_ventas [{nombre_cliente}]: {e}\n{traceback.format_exc()}")
+        _job_set(f"ventas_{nombre_cliente}", "error", "Error interno")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -955,6 +967,215 @@ def download_formulario103():
     )
     return send_file(f103_path, as_attachment=True,
                      download_name=f"formulario103{sufijo}.xlsx")
+
+
+# ══════════════════════════════════════════════════════════════
+# VENTAS — upload, listado, edición, cruce IVA, descarga Excel
+# ══════════════════════════════════════════════════════════════
+
+@app.route("/ventas")
+@login_required
+def ventas():
+    rutas  = get_rutas_cliente(current_user.nombre)
+    ventas_list = listar_ventas(rutas["db"])
+
+    # Calcular cruce IVA
+    periodo = request.args.get("periodo", "").strip()
+    if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
+        periodo = ""
+    cruce = cruce_iva(rutas["db"], periodo or None)
+
+    return render_template("ventas.html",
+                           user=current_user,
+                           ventas=ventas_list,
+                           cruce=cruce,
+                           periodo=periodo,
+                           has_mfa=User.has_totp(current_user.id))
+
+
+@app.route("/ventas/upload", methods=["POST"])
+@login_required
+def upload_ventas():
+    validate_csrf()
+    if "files[]" not in request.files:
+        flash("No se seleccionaron archivos", "danger")
+        return redirect(url_for("ventas"))
+
+    files = request.files.getlist("files[]")
+    if len(files) > 20:
+        flash("Máximo 20 archivos por carga", "danger")
+        return redirect(url_for("ventas"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    carpeta_ventas = rutas["ventas"]
+    os.makedirs(carpeta_ventas, exist_ok=True)
+
+    guardados = rechazados = 0
+    for file in files:
+        if file.filename == "" or not is_safe_file(file):
+            rechazados += 1
+            continue
+        filename = secure_filename(file.filename)
+        if not filename:
+            rechazados += 1
+            continue
+        file.save(os.path.join(carpeta_ventas, filename))
+        guardados += 1
+
+    if rechazados > 0:
+        flash(f"{rechazados} archivo(s) rechazados por seguridad", "warning")
+    if guardados > 0:
+        t = threading.Thread(
+            target=_run_background_ventas,
+            args=(current_user.nombre, guardados),
+            daemon=True
+        )
+        t.start()
+        flash(f"{guardados} factura(s) de venta subida(s). Procesando...", "success")
+
+    return redirect(url_for("ventas"))
+
+
+@app.route("/ventas/upload/status")
+@login_required
+def upload_ventas_status():
+    job = _job_get(f"ventas_{current_user.nombre}")
+    if not job:
+        return jsonify({"status": "idle"})
+    return jsonify({
+        "status": job["status"],
+        "msg":    job["msg"] if job["status"] != "error" else "Error procesando ventas",
+        "ts":     job["ts"],
+    })
+
+
+@app.route("/ventas/estado", methods=["POST"])
+@login_required
+def actualizar_estado_venta():
+    validate_csrf()
+    try:
+        venta_id = int(request.form.get("venta_id"))
+    except (TypeError, ValueError):
+        flash("ID inválido", "danger")
+        return redirect(url_for("ventas"))
+
+    nuevo_estado = request.form.get("estado")
+    comentario   = request.form.get("comentario", "")[:500]
+    estados_validos = {"aprobada", "en_revision", "rechazada", "pendiente"}
+    if nuevo_estado not in estados_validos:
+        flash("Estado inválido", "danger")
+        return redirect(url_for("ventas"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Sin datos aún", "warning")
+        return redirect(url_for("ventas"))
+
+    with sqlite3.connect(rutas["db"]) as conn:
+        conn.execute("""
+            UPDATE ventas
+            SET estado=?, comentario_estado=?, fecha_estado=?
+            WHERE id=?
+        """, (nuevo_estado, comentario, datetime.now().isoformat(), venta_id))
+
+    exportar_excel_ventas(rutas["db"], rutas["excel_ventas"])
+    flash("Venta actualizada", "success")
+    return redirect(url_for("ventas"))
+
+
+@app.route("/ventas/editar", methods=["POST"])
+@login_required
+def editar_venta():
+    validate_csrf()
+    try:
+        venta_id = int(request.form.get("venta_id"))
+    except (TypeError, ValueError):
+        flash("ID inválido", "danger")
+        return redirect(url_for("ventas"))
+
+    cliente      = request.form.get("cliente",      "").strip()[:200]
+    ruc_cliente  = request.form.get("ruc_cliente",  "").strip()[:30]
+    num_factura  = request.form.get("num_factura",  "").strip()[:80]
+    fecha        = request.form.get("fecha",        "").strip()[:10]
+    descripcion  = request.form.get("descripcion",  "").strip()[:300]
+    moneda       = request.form.get("moneda",       "USD").strip()[:5]
+    categoria    = request.form.get("categoria",    "Otros").strip()
+
+    monedas_validas    = {"USD","PAB","EUR","COP","MXN","PEN","CLP","ARS","BRL"}
+    categorias_validas = {
+        "Servicios","Materiales y Suministros","Transporte y Logistica",
+        "Tecnologia y Software","Nomina y RRHH","Alquiler e Inmuebles",
+        "Publicidad y Marketing","Impuestos y Tasas","Alimentacion","Otros"
+    }
+    if moneda not in monedas_validas:     moneda    = "USD"
+    if categoria not in categorias_validas: categoria = "Otros"
+
+    def pf(key):
+        v = request.form.get(key, "").strip()
+        if not v: return None
+        try:
+            val = float(v)
+            return val if 0 <= val <= 10_000_000 else None
+        except ValueError:
+            return None
+
+    monto_total = pf("monto_total")
+    itbms       = pf("itbms")
+    subtotal    = pf("subtotal")
+
+    if not cliente:
+        flash("El cliente no puede estar vacío", "danger")
+        return redirect(url_for("ventas"))
+    if monto_total is None or monto_total <= 0:
+        flash("El monto total debe ser mayor que cero", "danger")
+        return redirect(url_for("ventas"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Sin datos aún", "warning")
+        return redirect(url_for("ventas"))
+
+    with sqlite3.connect(rutas["db"]) as conn:
+        existe = conn.execute("SELECT 1 FROM ventas WHERE id=?", (venta_id,)).fetchone()
+        if not existe:
+            flash("Venta no encontrada", "danger")
+            return redirect(url_for("ventas"))
+        conn.execute("""
+            UPDATE ventas
+            SET cliente=?, ruc_cliente=?, numero_factura=?, fecha=?,
+                monto_total=?, itbms=?, subtotal=?, moneda=?, categoria=?,
+                descripcion=?, confianza=100, fuente='manual',
+                fecha_procesamiento=?
+            WHERE id=?
+        """, (cliente, ruc_cliente or None, num_factura or None, fecha or None,
+              monto_total, itbms, subtotal, moneda, categoria,
+              descripcion or None, datetime.now().isoformat(), venta_id))
+
+    exportar_excel_ventas(rutas["db"], rutas["excel_ventas"])
+    flash(f"Venta de '{cliente}' actualizada ✓", "success")
+    return redirect(url_for("ventas"))
+
+
+@app.route("/download-excel-ventas")
+@login_required
+def download_excel_ventas():
+    rutas = get_rutas_cliente(current_user.nombre)
+    if os.path.exists(rutas["excel_ventas"]):
+        return send_file(rutas["excel_ventas"], as_attachment=True,
+                         download_name="ventas.xlsx")
+    flash("Aún no tienes ventas procesadas", "warning")
+    return redirect(url_for("ventas"))
+
+
+@app.route("/api/cruce-iva")
+@login_required
+def api_cruce_iva():
+    periodo = request.args.get("periodo", "").strip()
+    if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
+        return jsonify({"error": "Período inválido"}), 400
+    rutas  = get_rutas_cliente(current_user.nombre)
+    resultado = cruce_iva(rutas["db"], periodo or None)
+    return jsonify(resultado)
 
 
 # ── LOGOUT ────────────────────────────────────────────────────

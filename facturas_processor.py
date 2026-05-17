@@ -124,12 +124,14 @@ def get_rutas_cliente(nombre_cliente):
         raise ValueError("Ruta inválida - intento de path traversal")
 
     return {
-        "base":       base,
-        "facturas":   os.path.join(base, "facturas"),
-        "procesados": os.path.join(base, "facturas", "procesados"),
-        "error":      os.path.join(base, "facturas", "error"),
-        "db":         os.path.join(base, "facturas.db"),
-        "excel":      os.path.join(base, "resultados.xlsx"),
+        "base":           base,
+        "facturas":       os.path.join(base, "facturas"),
+        "procesados":     os.path.join(base, "facturas", "procesados"),
+        "error":          os.path.join(base, "facturas", "error"),
+        "db":             os.path.join(base, "facturas.db"),
+        "excel":          os.path.join(base, "resultados.xlsx"),
+        "ventas":         os.path.join(base, "ventas"),
+        "excel_ventas":   os.path.join(base, "ventas.xlsx"),
     }
 
 def crear_carpetas_cliente(rutas):
@@ -501,6 +503,48 @@ def init_db(db_path):
                 advertencias_fiscales TEXT
             )
         ''')
+
+        # ── TABLA DE VENTAS (facturas emitidas) ──────────────────
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS ventas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                archivo TEXT UNIQUE,
+                hash TEXT UNIQUE,
+                cliente TEXT,
+                ruc_cliente TEXT,
+                numero_factura TEXT,
+                fecha TEXT,
+                monto_total REAL,
+                subtotal REAL,
+                itbms REAL,
+                moneda TEXT DEFAULT "USD",
+                descripcion TEXT,
+                categoria TEXT DEFAULT "Otros",
+                confianza INTEGER DEFAULT 70,
+                modelo_usado TEXT,
+                cufe TEXT,
+                fuente TEXT DEFAULT "llm",
+                estado TEXT DEFAULT "pendiente",
+                comentario_estado TEXT,
+                fecha_estado TEXT,
+                fecha_procesamiento TEXT,
+                advertencias_fiscales TEXT
+            )
+        ''')
+        # Migración por si la tabla ya existía sin alguna columna
+        nuevas_ventas = [
+            ('numero_factura',        'TEXT'),
+            ('cufe',                  'TEXT'),
+            ('advertencias_fiscales', 'TEXT'),
+            ('comentario_estado',     'TEXT'),
+            ('fecha_estado',          'TEXT'),
+        ]
+        for col, tipo in nuevas_ventas:
+            try:
+                conn.execute(f'ALTER TABLE ventas ADD COLUMN {col} {tipo}')
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
         nuevas_columnas = [
             ('categoria',              'TEXT DEFAULT "Otros"'),
             ('receptor',               'TEXT'),
@@ -585,6 +629,330 @@ def exportar_excel(db_path, excel_path):
     except Exception as e:
         slog("error", "Error Excel: {}", str(e))
         return 0
+
+
+# ══════════════════════════════════════════════════════════════
+# MÓDULO DE VENTAS — guardar, listar, cruce IVA crédito/débito
+# ══════════════════════════════════════════════════════════════
+
+def guardar_venta(db_path: str, datos: dict, archivo: str, modelo: str) -> bool:
+    """
+    Inserta una factura de venta en la tabla ventas.
+    Retorna True si fue insertada, False si ya existía (duplicado por hash).
+    """
+    hash_val = datos.get("hash")
+    try:
+        with sqlite3.connect(db_path) as conn:
+            existe = conn.execute(
+                "SELECT 1 FROM ventas WHERE hash=?", (hash_val,)
+            ).fetchone()
+            if existe:
+                return False
+
+            adv_list = verificar_itbms(datos)
+            adv_str  = " | ".join(adv_list) if adv_list else None
+
+            conn.execute("""
+                INSERT INTO ventas
+                  (archivo, hash, cliente, ruc_cliente, numero_factura,
+                   fecha, monto_total, subtotal, itbms, moneda,
+                   descripcion, categoria, confianza, modelo_usado,
+                   cufe, fuente, estado, fecha_procesamiento, advertencias_fiscales)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                os.path.basename(archivo),
+                hash_val,
+                datos.get("cliente") or datos.get("proveedor") or "",
+                datos.get("ruc_cliente") or datos.get("ruc") or None,
+                datos.get("numero_factura") or datos.get("cufe") or None,
+                datos.get("fecha"),
+                float(datos.get("monto_total") or 0),
+                float(datos.get("subtotal") or 0) or None,
+                float(datos.get("itbms") or 0) or None,
+                datos.get("moneda", "USD"),
+                datos.get("descripcion"),
+                datos.get("categoria", "Otros"),
+                int(datos.get("confianza", 70)),
+                modelo,
+                datos.get("cufe"),
+                datos.get("fuente", "llm"),
+                "pendiente",
+                datetime.now().isoformat(),
+                adv_str,
+            ))
+            conn.commit()
+            return True
+    except Exception as e:
+        slog("error", "Error guardando venta {}: {}", archivo, str(e))
+        return False
+
+
+def listar_ventas(db_path: str) -> list:
+    """Retorna lista de dicts con todas las ventas del cliente."""
+    if not os.path.exists(db_path):
+        return []
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM ventas ORDER BY fecha_procesamiento DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        slog("error", "Error listar_ventas: {}", str(e))
+        return []
+
+
+def cruce_iva(db_path: str, periodo: str | None = None) -> dict:
+    """
+    Calcula el cruce IVA crédito fiscal (compras) vs débito fiscal (ventas)
+    para un período YYYY-MM opcional.
+
+    Retorna dict con:
+      credito_fiscal  — ITBMS soportado en compras aprobadas
+      debito_fiscal   — ITBMS repercutido en ventas aprobadas
+      saldo           — débito - crédito  (>0 = pagar a DGI, <0 = saldo a favor)
+      total_compras   — base imponible compras
+      total_ventas    — base imponible ventas
+      periodo         — período analizado
+      detalle_compras — lista resumida por proveedor
+      detalle_ventas  — lista resumida por cliente
+    """
+    filtro_periodo = ""
+    params: list = []
+    if periodo:
+        filtro_periodo = " AND fecha LIKE ?"
+        params = [f"{periodo}%"]
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            # ── Compras (IVA crédito) ─────────────────────────────
+            q_compras = f"""
+                SELECT
+                    COALESCE(SUM(COALESCE(subtotal, monto_total - COALESCE(itbms,0))), 0) AS base,
+                    COALESCE(SUM(COALESCE(itbms, 0)), 0) AS itbms_total
+                FROM facturas
+                WHERE estado = 'aprobada' {filtro_periodo}
+            """
+            c_row = conn.execute(q_compras, params).fetchone()
+            base_compras   = round(float(c_row["base"]), 2)
+            credito_fiscal = round(float(c_row["itbms_total"]), 2)
+
+            det_compras_rows = conn.execute(f"""
+                SELECT proveedor,
+                       COUNT(*) AS n,
+                       COALESCE(SUM(COALESCE(subtotal, monto_total - COALESCE(itbms,0))), 0) AS base,
+                       COALESCE(SUM(COALESCE(itbms, 0)), 0) AS itbms
+                FROM facturas
+                WHERE estado = 'aprobada' {filtro_periodo}
+                GROUP BY proveedor ORDER BY itbms DESC
+            """, params).fetchall()
+
+            # ── Ventas (IVA débito) ───────────────────────────────
+            q_ventas = f"""
+                SELECT
+                    COALESCE(SUM(COALESCE(subtotal, monto_total - COALESCE(itbms,0))), 0) AS base,
+                    COALESCE(SUM(COALESCE(itbms, 0)), 0) AS itbms_total
+                FROM ventas
+                WHERE estado = 'aprobada' {filtro_periodo}
+            """
+            v_row = conn.execute(q_ventas, params).fetchone()
+            base_ventas   = round(float(v_row["base"]), 2)
+            debito_fiscal = round(float(v_row["itbms_total"]), 2)
+
+            det_ventas_rows = conn.execute(f"""
+                SELECT cliente,
+                       COUNT(*) AS n,
+                       COALESCE(SUM(COALESCE(subtotal, monto_total - COALESCE(itbms,0))), 0) AS base,
+                       COALESCE(SUM(COALESCE(itbms, 0)), 0) AS itbms
+                FROM ventas
+                WHERE estado = 'aprobada' {filtro_periodo}
+                GROUP BY cliente ORDER BY itbms DESC
+            """, params).fetchall()
+
+        saldo = round(debito_fiscal - credito_fiscal, 2)
+
+        return {
+            "credito_fiscal":  credito_fiscal,
+            "debito_fiscal":   debito_fiscal,
+            "saldo":           saldo,
+            "saldo_label":     "Saldo a pagar a DGI" if saldo >= 0 else "Saldo a favor del contribuyente",
+            "total_compras":   base_compras,
+            "total_ventas":    base_ventas,
+            "periodo":         periodo or "Todos los períodos",
+            "detalle_compras": [dict(r) for r in det_compras_rows],
+            "detalle_ventas":  [dict(r) for r in det_ventas_rows],
+        }
+    except Exception as e:
+        slog("error", "Error cruce_iva: {}", str(e))
+        return {
+            "credito_fiscal": 0, "debito_fiscal": 0, "saldo": 0,
+            "saldo_label": "Error", "total_compras": 0, "total_ventas": 0,
+            "periodo": periodo or "", "detalle_compras": [], "detalle_ventas": [],
+            "error": str(e),
+        }
+
+
+COLUMNAS_EXCEL_VENTAS = [
+    ("archivo",               "Archivo"),
+    ("cliente",               "Cliente"),
+    ("ruc_cliente",           "RUC Cliente"),
+    ("numero_factura",        "N° Factura"),
+    ("fecha",                 "Fecha"),
+    ("monto_total",           "Monto Total"),
+    ("subtotal",              "Subtotal"),
+    ("itbms",                 "ITBMS Débito"),
+    ("moneda",                "Moneda"),
+    ("categoria",             "Categoría"),
+    ("estado",                "Estado"),
+    ("comentario_estado",     "Comentario"),
+    ("descripcion",           "Descripción"),
+    ("cufe",                  "CUFE"),
+    ("fuente",                "Fuente"),
+    ("confianza",             "Confianza %"),
+    ("advertencias_fiscales", "⚠ Advertencias"),
+    ("modelo_usado",          "Modelo"),
+    ("fecha_procesamiento",   "Fecha Procesado"),
+]
+
+
+def exportar_excel_ventas(db_path: str, excel_path: str) -> int:
+    """Genera el Excel de ventas. Retorna cantidad de filas."""
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cols_sql = ", ".join(c[0] for c in COLUMNAS_EXCEL_VENTAS)
+            rows = conn.execute(
+                f"SELECT {cols_sql} FROM ventas ORDER BY fecha_procesamiento DESC"
+            ).fetchall()
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Ventas"
+
+        header_fill = PatternFill("solid", fgColor="3B82F6")   # azul para ventas
+        header_font = Font(bold=True, color="FFFFFF")
+        for col_idx, (_, label) in enumerate(COLUMNAS_EXCEL_VENTAS, 1):
+            cell = ws.cell(row=1, column=col_idx, value=label)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+
+        warn_fill = PatternFill("solid", fgColor="FEF3C7")
+        for row_idx, row in enumerate(rows, 2):
+            for col_idx, (field, _) in enumerate(COLUMNAS_EXCEL_VENTAS, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=row[field])
+                if field == "advertencias_fiscales" and row[field]:
+                    cell.fill = warn_fill
+
+        for col in ws.columns:
+            max_len = max((len(str(c.value or "")) for c in col), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 60)
+
+        wb.save(excel_path)
+        return len(rows)
+    except Exception as e:
+        slog("error", "Error Excel ventas: {}", str(e))
+        return 0
+
+
+def procesar_cliente_ventas(nombre_cliente: str, procesadas: set):
+    """
+    Igual que procesar_cliente pero para la carpeta 'ventas' del cliente.
+    Las facturas allí son emitidas por el cliente (débito fiscal).
+    """
+    rutas = get_rutas_cliente(nombre_cliente)
+    carpeta_ventas   = os.path.join(rutas["base"], "ventas")
+    carpeta_proc_v   = os.path.join(carpeta_ventas, "procesados")
+    carpeta_error_v  = os.path.join(carpeta_ventas, "error")
+    os.makedirs(carpeta_ventas,  exist_ok=True)
+    os.makedirs(carpeta_proc_v,  exist_ok=True)
+    os.makedirs(carpeta_error_v, exist_ok=True)
+
+    init_db(rutas["db"])
+
+    archivos = [
+        f for f in os.listdir(carpeta_ventas)
+        if f.lower().endswith(('.pdf', '.txt', '.xlsx', '.xls', '.xml', '.jpg', '.jpeg', '.png', '.webp'))
+    ]
+
+    clave = lambda f: f"ventas/{nombre_cliente}/{f}"
+
+    for archivo in archivos:
+        if clave(archivo) in procesadas:
+            continue
+
+        ruta = os.path.join(carpeta_ventas, archivo)
+        ext  = os.path.splitext(archivo)[1].lower()
+        slog("info", "[ventas] Procesando: {}/{}", nombre_cliente, archivo)
+
+        file_hash = get_file_hash(ruta)
+        with sqlite3.connect(rutas["db"]) as conn:
+            existe = conn.execute(
+                "SELECT 1 FROM ventas WHERE hash=?", (file_hash,)
+            ).fetchone()
+        if existe:
+            mover_archivo(ruta, carpeta_proc_v)
+            procesadas.add(clave(archivo))
+            continue
+
+        resultado = None
+        modelo    = None
+
+        if ext == ".xml":
+            resultado = extraer_datos_xml_etax(ruta)
+            if resultado:
+                modelo = "e-Tax-XML"
+                resultado["hash"] = file_hash
+            else:
+                mover_archivo(ruta, carpeta_error_v)
+                procesadas.add(clave(archivo))
+                continue
+        elif ext in (".jpg", ".jpeg", ".png", ".webp"):
+            resultado, modelo = extraer_datos_imagen(ruta)
+            if resultado:
+                resultado["hash"] = file_hash
+            else:
+                mover_archivo(ruta, carpeta_error_v)
+                procesadas.add(clave(archivo))
+                continue
+        else:
+            texto = extraer_texto(ruta)
+            if not texto or len(texto.strip()) < 20:
+                mover_archivo(ruta, carpeta_error_v)
+                procesadas.add(clave(archivo))
+                continue
+            resultado, modelo = llamar_ia(texto)
+            if resultado:
+                resultado["hash"] = file_hash
+
+        if resultado:
+            # Mapear "receptor" como "cliente" si la IA lo extrajo como proveedor
+            if not resultado.get("cliente") and resultado.get("receptor"):
+                resultado["cliente"] = resultado["receptor"]
+            if not resultado.get("ruc_cliente") and resultado.get("ruc_receptor"):
+                resultado["ruc_cliente"] = resultado["ruc_receptor"]
+
+            if guardar_venta(rutas["db"], resultado, archivo, modelo):
+                slog("info", "[ventas] OK: {}/{}", nombre_cliente, archivo)
+                enviar_telegram(
+                    f"🧾 Venta procesada\n"
+                    f"Cliente: {nombre_cliente}\nArchivo: {archivo}\n"
+                    f"Cliente facturado: {resultado.get('cliente','?')}\n"
+                    f"Monto: {resultado.get('monto_total')} {resultado.get('moneda','USD')}"
+                )
+            mover_archivo(ruta, carpeta_proc_v)
+        else:
+            slog("error", "[ventas] FALLO: {}/{}", nombre_cliente, archivo)
+            mover_archivo(ruta, carpeta_error_v)
+
+        procesadas.add(clave(archivo))
+
+    # Regenerar Excel de ventas
+    excel_ventas = os.path.join(rutas["base"], "ventas.xlsx")
+    exportar_excel_ventas(rutas["db"], excel_ventas)
 
 
 def exportar_dgi_csv(db_path, csv_path, periodo=None):
