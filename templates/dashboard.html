@@ -8,12 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style nonce="{{ csp_nonce() }}">
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #060910; --surface: #0d1117; --surface2: #121820; --border: rgba(255,255,255,0.07);
-    --accent: #00E5C3; --accent2: #3B82F6; --accent3: #F59E0B; --accent4: #A78BFA;
-    --text: #F0F4FF; --muted: #7A8FAD; --error: #F87171; --success: #34D399;
-    --ventas-color: #A78BFA; --compras-color: #00E5C3;
-  }
+  :root { --bg: #060910; --surface: #0d1117; --surface2: #121820; --border: rgba(255,255,255,0.07); --accent: #00E5C3; --accent2: #3B82F6; --accent3: #F59E0B; --text: #F0F4FF; --muted: #7A8FAD; --error: #F87171; --success: #34D399; }
   body { background: var(--bg); color: var(--text); font-family: "DM Sans", sans-serif; min-height: 100vh; }
  
   /* NAV */
@@ -30,7 +25,7 @@
  
   /* FLASH */
   .flash { padding: 0.75rem 1rem; border-radius: 10px; font-size: 0.85rem; margin-bottom: 1.5rem; }
-  .flash.danger  { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: var(--error); }
+  .flash.danger { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: var(--error); }
   .flash.success { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); color: var(--success); }
   .flash.warning { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); color: var(--accent3); }
  
@@ -44,23 +39,9 @@
   .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; }
   .metric-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
   .metric-value { font-family: "Syne", sans-serif; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
-  .metric-value.green  { color: var(--accent); }
-  .metric-value.blue   { color: var(--accent2); }
-  .metric-value.amber  { color: var(--accent3); }
-  .metric-value.purple { color: var(--accent4); }
- 
-  /* ── TABS ── */
-  .tabs-nav { display: flex; gap: 0.35rem; margin-bottom: 1.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0.35rem; width: fit-content; }
-  .tab-btn { background: transparent; border: none; border-radius: 10px; padding: 0.55rem 1.2rem; font-size: 0.85rem; font-weight: 500; color: var(--muted); cursor: pointer; font-family: "DM Sans", sans-serif; transition: all 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 0.45rem; }
-  .tab-btn.active { background: var(--surface2); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
-  .tab-btn .tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .tab-btn.active .tab-dot.compras { background: var(--compras-color); }
-  .tab-btn.active .tab-dot.ventas  { background: var(--ventas-color); }
-  .tab-btn.active .tab-dot.cruce   { background: var(--accent3); }
-  .tab-pane { display: none; }
-  .tab-pane.active { display: block; }
- 
-  /* CHARTS */
+  .metric-value.green { color: var(--accent); }
+  .metric-value.blue { color: var(--accent2); }
+  .metric-value.amber { color: var(--accent3); }
   .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
   .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1.5rem; }
   .chart-card.wide { grid-column: span 2; }
@@ -68,69 +49,26 @@
   .chart-sub { font-size: 0.78rem; color: var(--muted); margin-bottom: 1.25rem; }
   .chart-wrap { position: relative; height: 220px; }
   .chart-wrap.tall { height: 260px; }
- 
-  /* ── CATEGORIAS BREAKDOWN ── */
-  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
-  .cat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1.5rem; }
-  .cat-card.wide { grid-column: span 2; }
-  .cat-list { display: flex; flex-direction: column; gap: 0.65rem; margin-top: 1rem; }
-  .cat-row { display: flex; align-items: center; gap: 0.75rem; }
-  .cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .cat-name { flex: 1; font-size: 0.83rem; color: var(--text); }
-  .cat-bar-wrap { width: 120px; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
-  .cat-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
-  .cat-pct { font-size: 0.78rem; color: var(--muted); width: 38px; text-align: right; flex-shrink: 0; }
-  .cat-amount { font-size: 0.78rem; color: var(--accent); width: 80px; text-align: right; flex-shrink: 0; font-weight: 500; }
- 
-  /* ── CRUCE ITBMS ── */
-  .cruce-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
-  .cruce-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.25rem; }
-  .cruce-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
-  .cruce-value { font-family: "Syne", sans-serif; font-size: 1.5rem; font-weight: 800; }
-  .cruce-value.green   { color: var(--success); }
-  .cruce-value.red     { color: var(--error); }
-  .cruce-value.amber   { color: var(--accent3); }
-  .cruce-sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
-  .balance-bar-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1.5rem; margin-bottom: 2rem; }
-  .balance-bar-title { font-family: "Syne", sans-serif; font-size: 0.95rem; font-weight: 700; margin-bottom: 0.25rem; }
-  .balance-bar-sub { font-size: 0.78rem; color: var(--muted); margin-bottom: 1.25rem; }
-  .bbar { height: 28px; border-radius: 8px; background: rgba(255,255,255,0.04); overflow: hidden; display: flex; }
-  .bbar-compras { background: var(--compras-color); height: 100%; border-radius: 8px 0 0 8px; transition: width 1s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 0.72rem; font-weight: 600; color: #030F0D; white-space: nowrap; overflow: hidden; }
-  .bbar-ventas { background: var(--ventas-color); height: 100%; border-radius: 0 8px 8px 0; transition: width 1s ease; display: flex; align-items: center; justify-content: flex-start; padding-left: 8px; font-size: 0.72rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; }
-  .bbar-legend { display: flex; gap: 1.5rem; margin-top: 0.75rem; }
-  .bbar-leg-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--muted); }
-  .bbar-leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
- 
-  /* BADGE */
   .badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 100px; font-size: 0.7rem; font-weight: 600; }
-  .badge-foto   { background: rgba(59,130,246,0.1); color: var(--accent2); }
-  .badge-manual { background: rgba(52,211,153,0.1); color: var(--success); }
-  .badge.high   { background: rgba(0,229,195,0.1); color: var(--accent); }
-  .badge.mid    { background: rgba(245,158,11,0.1); color: var(--accent3); }
-  .badge.low    { background: rgba(248,113,113,0.1); color: var(--error); }
+  .badge-foto { background:rgba(59,130,246,0.1); color:var(--accent2); }
+  .badge-manual { background:rgba(52,211,153,0.1); color:var(--success); }
+  .badge.high { background: rgba(0,229,195,0.1); color: var(--accent); }
+  .badge.mid { background: rgba(245,158,11,0.1); color: var(--accent3); }
+  .badge.low { background: rgba(248,113,113,0.1); color: var(--error); }
  
   /* UPLOAD */
   .upload-section { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2rem; margin-bottom: 2rem; }
   .upload-section h2 { font-family: "Syne", sans-serif; font-size: 1.1rem; font-weight: 700; margin-bottom: 1.25rem; }
-  .upload-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
-  .upload-tab { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 1.1rem; font-size: 0.82rem; font-weight: 500; cursor: pointer; font-family: "DM Sans", sans-serif; color: var(--muted); transition: all 0.2s; }
-  .upload-tab.active-compras { background: rgba(0,229,195,0.08); border-color: rgba(0,229,195,0.3); color: var(--compras-color); }
-  .upload-tab.active-ventas  { background: rgba(167,139,250,0.08); border-color: rgba(167,139,250,0.3); color: var(--ventas-color); }
   .upload-zone { border: 2px dashed rgba(0,229,195,0.25); border-radius: 14px; padding: 2.5rem; text-align: center; transition: border-color 0.2s, background 0.2s; cursor: pointer; position: relative; }
-  .upload-zone.ventas-zone { border-color: rgba(167,139,250,0.25); }
   .upload-zone:hover, .upload-zone.drag-over { border-color: rgba(0,229,195,0.5); background: rgba(0,229,195,0.03); }
-  .upload-zone.ventas-zone:hover, .upload-zone.ventas-zone.drag-over { border-color: rgba(167,139,250,0.5); background: rgba(167,139,250,0.03); }
   .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
   .upload-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
   .upload-zone p { color: var(--muted); font-size: 0.9rem; }
-  .upload-zone span.c { color: var(--accent); font-weight: 500; }
-  .upload-zone span.v { color: var(--ventas-color); font-weight: 500; }
+  .upload-zone span { color: var(--accent); font-weight: 500; }
   .upload-zone small { display: block; margin-top: 0.4rem; font-size: 0.75rem; color: var(--muted); }
   .file-list { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .file-item { background: rgba(0,229,195,0.05); border: 1px solid rgba(0,229,195,0.15); border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.82rem; color: var(--accent); display: flex; align-items: center; gap: 0.5rem; }
-  .file-item.venta { background: rgba(167,139,250,0.05); border-color: rgba(167,139,250,0.15); color: var(--ventas-color); }
   .upload-btn { background: var(--accent); color: #030F0D; border: none; border-radius: 100px; padding: 0.75rem 2rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 1rem; font-family: "DM Sans", sans-serif; transition: opacity 0.2s; display: none; }
-  .upload-btn.ventas-btn { background: var(--ventas-color); color: #fff; }
   .upload-btn:hover { opacity: 0.9; }
  
   /* TABLE */
@@ -139,8 +77,6 @@
   .table-header h2 { font-family: "Syne", sans-serif; font-size: 1rem; font-weight: 700; }
   .download-btn { background: transparent; border: 1px solid rgba(0,229,195,0.3); color: var(--accent); border-radius: 100px; padding: 0.4rem 1rem; font-size: 0.8rem; font-weight: 500; text-decoration: none; transition: background 0.2s; }
   .download-btn:hover { background: rgba(0,229,195,0.08); }
-  .download-btn.ventas { border-color: rgba(167,139,250,0.3); color: var(--ventas-color); }
-  .download-btn.ventas:hover { background: rgba(167,139,250,0.08); }
   .empty-state { padding: 4rem 2rem; text-align: center; color: var(--muted); }
   .empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
   .empty-state p { font-size: 0.9rem; }
@@ -151,107 +87,100 @@
   tr:hover td { background: rgba(255,255,255,0.01); }
   .td-proveedor { color: var(--text); font-weight: 500; }
   .td-monto { color: var(--accent); font-weight: 600; }
-  .td-monto.venta { color: var(--ventas-color); }
   .conf-wrap { display: flex; align-items: center; gap: 0.5rem; }
   .conf-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; width: 50px; overflow: hidden; flex-shrink: 0; }
   .conf-fill { height: 100%; border-radius: 2px; }
   .conf-fill.high { background: var(--accent); }
-  .conf-fill.mid  { background: var(--accent3); }
-  .conf-fill.low  { background: var(--error); }
+  .conf-fill.mid { background: var(--accent3); }
+  .conf-fill.low { background: var(--error); }
  
   /* ESTADO BADGES */
-  .estado-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 100px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
-  .estado-aprobada    { background: rgba(0,229,195,0.12); color: var(--accent); border: 1px solid rgba(0,229,195,0.25); }
-  .estado-en_revision { background: rgba(245,158,11,0.12); color: var(--accent3); border: 1px solid rgba(245,158,11,0.25); }
-  .estado-rechazada   { background: rgba(248,113,113,0.12); color: var(--error); border: 1px solid rgba(248,113,113,0.25); }
-  .estado-pendiente   { background: rgba(122,143,173,0.1); color: var(--muted); border: 1px solid rgba(122,143,173,0.2); }
+  .estado-badge { display:inline-block; padding:0.2rem 0.6rem; border-radius:100px; font-size:0.72rem; font-weight:600; white-space:nowrap; }
+  .estado-aprobada { background:rgba(0,229,195,0.12); color:var(--accent); border:1px solid rgba(0,229,195,0.25); }
+  .estado-en_revision { background:rgba(245,158,11,0.12); color:var(--accent3); border:1px solid rgba(245,158,11,0.25); }
+  .estado-rechazada { background:rgba(248,113,113,0.12); color:var(--error); border:1px solid rgba(248,113,113,0.25); }
+  .estado-pendiente { background:rgba(122,143,173,0.1); color:var(--muted); border:1px solid rgba(122,143,173,0.2); }
  
   /* ACTION BUTTON */
-  .action-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer; font-family: "DM Sans", sans-serif; transition: all 0.2s; }
-  .action-btn:hover { border-color: rgba(0,229,195,0.4); color: var(--accent); background: rgba(0,229,195,0.04); }
-  .edit-btn:hover   { border-color: rgba(59,130,246,0.4); color: var(--accent2); background: rgba(59,130,246,0.04); }
+  .action-btn { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:0.3rem 0.7rem; font-size:0.78rem; cursor:pointer; font-family:"DM Sans",sans-serif; transition:all 0.2s; }
+  .action-btn:hover { border-color:rgba(0,229,195,0.4); color:var(--accent); background:rgba(0,229,195,0.04); }
+  .edit-btn:hover { border-color:rgba(59,130,246,0.4); color:var(--accent2); background:rgba(59,130,246,0.04); }
  
   /* MODAL EDICION */
   .modal-card.wide { max-width: 560px; }
-  .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.25rem; }
+  .edit-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.85rem; margin-bottom:1.25rem; }
   .edit-grid .full { grid-column: span 2; }
-  .edit-field label { display: block; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.35rem; font-weight: 500; }
-  .edit-field input, .edit-field select { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 9px; padding: 0.6rem 0.85rem; color: var(--text); font-family: "DM Sans", sans-serif; font-size: 0.88rem; outline: none; transition: border-color 0.2s; }
-  .edit-field input:focus, .edit-field select:focus { border-color: rgba(59,130,246,0.45); }
-  .edit-field select option { background: #0d1117; }
-  .edit-nota { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; font-style: italic; }
-  .conf-preview { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 100px; font-size: 0.72rem; font-weight: 600; margin-left: 0.4rem; }
-  .btn-guardar-edit { background: var(--accent2); color: #fff; border: none; border-radius: 100px; padding: 0.6rem 1.5rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: "DM Sans", sans-serif; transition: opacity 0.2s; }
-  .btn-guardar-edit:hover { opacity: 0.85; }
+  .edit-field label { display:block; font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.35rem; font-weight:500; }
+  .edit-field input, .edit-field select { width:100%; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:9px; padding:0.6rem 0.85rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.88rem; outline:none; transition:border-color 0.2s; }
+  .edit-field input:focus, .edit-field select:focus { border-color:rgba(59,130,246,0.45); }
+  .edit-field select option { background:#0d1117; }
+  .edit-nota { font-size:0.75rem; color:var(--muted); margin-top:0.25rem; font-style:italic; }
+  .conf-preview { display:inline-block; padding:0.15rem 0.5rem; border-radius:100px; font-size:0.72rem; font-weight:600; margin-left:0.4rem; }
+  .btn-guardar-edit { background:var(--accent2); color:#fff; border:none; border-radius:100px; padding:0.6rem 1.5rem; font-size:0.88rem; font-weight:600; cursor:pointer; font-family:"DM Sans",sans-serif; transition:opacity 0.2s; }
+  .btn-guardar-edit:hover { opacity:0.85; }
  
   /* MODAL */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); z-index: 1000; align-items: center; justify-content: center; padding: 1rem; }
-  .modal-overlay.open { display: flex; }
-  .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2rem; width: 100%; max-width: 460px; }
-  .modal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; }
-  .modal-title { font-family: "Syne", sans-serif; font-size: 1.1rem; font-weight: 700; }
-  .modal-sub { font-size: 0.82rem; color: var(--muted); margin-top: 0.2rem; }
-  .modal-close { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .modal-close:hover { color: var(--text); }
-  .modal-estados { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
-  .estado-opcion { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.2s; font-size: 0.88rem; color: var(--muted); }
-  .estado-opcion:has(input:checked) { border-color: rgba(0,229,195,0.4); background: rgba(0,229,195,0.04); color: var(--text); }
-  .estado-opcion input { display: none; }
-  .estado-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .estado-dot.aprobada   { background: var(--accent); }
-  .estado-dot.en_revision { background: var(--accent3); }
-  .estado-dot.rechazada  { background: var(--error); }
-  .estado-dot.pendiente  { background: var(--muted); }
-  .form-group-modal label.modal-label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .form-group-modal textarea { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem 1rem; color: var(--text); font-family: "DM Sans", sans-serif; font-size: 0.88rem; resize: vertical; outline: none; }
-  .form-group-modal textarea:focus { border-color: rgba(0,229,195,0.4); }
-  .btn-cancel  { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 100px; padding: 0.6rem 1.25rem; font-size: 0.88rem; cursor: pointer; font-family: "DM Sans", sans-serif; }
-  .btn-guardar { background: var(--accent); color: #030F0D; border: none; border-radius: 100px; padding: 0.6rem 1.5rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; font-family: "DM Sans", sans-serif; transition: opacity 0.2s; }
-  .btn-guardar:hover { opacity: 0.9; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); z-index:1000; align-items:center; justify-content:center; padding:1rem; }
+  .modal-overlay.open { display:flex; }
+  .modal-card { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:2rem; width:100%; max-width:460px; }
+  .modal-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1.5rem; }
+  .modal-title { font-family:"Syne",sans-serif; font-size:1.1rem; font-weight:700; }
+  .modal-sub { font-size:0.82rem; color:var(--muted); margin-top:0.2rem; }
+  .modal-close { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; width:32px; height:32px; cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .modal-close:hover { color:var(--text); }
+  .modal-estados { display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1.25rem; }
+  .estado-opcion { display:flex; align-items:center; gap:0.75rem; padding:0.75rem 1rem; border:1px solid var(--border); border-radius:12px; cursor:pointer; transition:all 0.2s; font-size:0.88rem; color:var(--muted); }
+  .estado-opcion:has(input:checked) { border-color:rgba(0,229,195,0.4); background:rgba(0,229,195,0.04); color:var(--text); }
+  .estado-opcion input { display:none; }
+  .estado-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .estado-dot.aprobada { background:var(--accent); }
+  .estado-dot.en_revision { background:var(--accent3); }
+  .estado-dot.rechazada { background:var(--error); }
+  .estado-dot.pendiente { background:var(--muted); }
+  .form-group-modal label.modal-label { display:block; font-size:0.78rem; color:var(--muted); margin-bottom:0.4rem; text-transform:uppercase; letter-spacing:0.05em; }
+  .form-group-modal textarea { width:100%; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:0.75rem 1rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.88rem; resize:vertical; outline:none; }
+  .form-group-modal textarea:focus { border-color:rgba(0,229,195,0.4); }
+  .btn-cancel { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:100px; padding:0.6rem 1.25rem; font-size:0.88rem; cursor:pointer; font-family:"DM Sans",sans-serif; }
+  .btn-guardar { background:var(--accent); color:#030F0D; border:none; border-radius:100px; padding:0.6rem 1.5rem; font-size:0.88rem; font-weight:600; cursor:pointer; font-family:"DM Sans",sans-serif; transition:opacity 0.2s; }
+  .btn-guardar:hover { opacity:0.9; }
  
+
   /* BARRA DE FILTROS */
-  .filter-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--surface2); }
-  .filter-search { flex: 1; min-width: 200px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.9rem; color: var(--text); font-family: "DM Sans", sans-serif; font-size: 0.88rem; outline: none; transition: border-color 0.2s; }
-  .filter-search:focus { border-color: rgba(0,229,195,0.4); }
-  .filter-search::placeholder { color: var(--muted); }
-  .filter-select { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 0.55rem 0.85rem; color: var(--text); font-family: "DM Sans", sans-serif; font-size: 0.82rem; outline: none; cursor: pointer; }
-  .filter-select option { background: #0d1117; }
-  .filter-count { font-size: 0.78rem; color: var(--muted); margin-left: auto; white-space: nowrap; }
-  .filter-reset { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 0.45rem 0.85rem; font-size: 0.78rem; cursor: pointer; font-family: "DM Sans", sans-serif; transition: all 0.2s; }
-  .filter-reset:hover { border-color: rgba(248,113,113,0.4); color: var(--error); }
-  tr.hidden-row { display: none; }
- 
-  /* INSIGHTS */
-  .insights { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 2rem; }
-  .insight-card { flex: 1; min-width: 200px; border-radius: 14px; padding: 1rem 1.25rem; display: flex; align-items: center; gap: 0.85rem; border: 1px solid; }
-  .insight-card.warn  { background: rgba(245,158,11,0.07); border-color: rgba(245,158,11,0.2); }
-  .insight-card.info  { background: rgba(59,130,246,0.07); border-color: rgba(59,130,246,0.2); }
-  .insight-card.alert { background: rgba(248,113,113,0.07); border-color: rgba(248,113,113,0.2); }
-  .insight-card.ok    { background: rgba(52,211,153,0.07); border-color: rgba(52,211,153,0.2); }
-  .insight-icon { font-size: 1.5rem; flex-shrink: 0; }
-  .insight-text strong { display: block; font-size: 0.9rem; font-weight: 600; }
-  .insight-text span   { font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
-  .insight-card.warn  .insight-text strong { color: var(--accent3); }
-  .insight-card.info  .insight-text strong { color: var(--accent2); }
-  .insight-card.alert .insight-text strong { color: var(--error); }
-  .insight-card.ok    .insight-text strong { color: var(--success); }
- 
-  .btn-ver { text-decoration: none; display: inline-flex; align-items: center; }
- 
-  /* MFA warning banner */
-  .mfa-banner { background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.2); border-radius: 12px; padding: 0.85rem 1.25rem; font-size: 0.85rem; color: var(--accent3); display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-  .mfa-banner a { color: var(--accent3); font-weight: 600; text-decoration: underline; }
- 
+  .filter-bar { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; padding:1rem 1.5rem; border-bottom:1px solid var(--border); background:var(--surface2); }
+  .filter-search { flex:1; min-width:200px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:0.55rem 0.9rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.88rem; outline:none; transition:border-color 0.2s; }
+  .filter-search:focus { border-color:rgba(0,229,195,0.4); }
+  .filter-search::placeholder { color:var(--muted); }
+  .filter-select { background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px; padding:0.55rem 0.85rem; color:var(--text); font-family:"DM Sans",sans-serif; font-size:0.82rem; outline:none; cursor:pointer; }
+  .filter-select option { background:#0d1117; }
+  .filter-count { font-size:0.78rem; color:var(--muted); margin-left:auto; white-space:nowrap; }
+  .filter-reset { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:0.45rem 0.85rem; font-size:0.78rem; cursor:pointer; font-family:"DM Sans",sans-serif; transition:all 0.2s; }
+  .filter-reset:hover { border-color:rgba(248,113,113,0.4); color:var(--error); }
+  tr.hidden-row { display:none; }
+
+  /* INSIGHTS ACCIONABLES */
+  .insights { display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:2rem; }
+  .insight-card { flex:1; min-width:200px; border-radius:14px; padding:1rem 1.25rem; display:flex; align-items:center; gap:0.85rem; border:1px solid; }
+  .insight-card.warn  { background:rgba(245,158,11,0.07); border-color:rgba(245,158,11,0.2); }
+  .insight-card.info  { background:rgba(59,130,246,0.07); border-color:rgba(59,130,246,0.2); }
+  .insight-card.alert { background:rgba(248,113,113,0.07); border-color:rgba(248,113,113,0.2); }
+  .insight-card.ok    { background:rgba(52,211,153,0.07); border-color:rgba(52,211,153,0.2); }
+  .insight-icon { font-size:1.5rem; flex-shrink:0; }
+  .insight-text strong { display:block; font-size:0.9rem; font-weight:600; }
+  .insight-text span   { font-size:0.78rem; color:var(--muted); line-height:1.4; }
+  .insight-card.warn  .insight-text strong { color:var(--accent3); }
+  .insight-card.info  .insight-text strong { color:var(--accent2); }
+  .insight-card.alert .insight-text strong { color:var(--error);   }
+  .insight-card.ok    .insight-text strong { color:var(--success);  }
+
+  /* BTN VER */
+  .btn-ver { text-decoration:none; display:inline-flex; align-items:center; }
   @media (max-width: 768px) {
     .metrics { grid-template-columns: repeat(2, 1fr); }
-    .insights, .cruce-grid { flex-direction: column; grid-template-columns: 1fr; }
-    .cat-grid, .charts-grid { grid-template-columns: 1fr; }
-    .chart-card.wide, .cat-card.wide { grid-column: span 1; }
-    .filter-bar { flex-direction: column; align-items: stretch; }
-    .filter-count { margin-left: 0; }
+    .insights { flex-direction:column; }
+    .filter-bar { flex-direction:column; align-items:stretch; }
+    .filter-count { margin-left:0; }
     table { font-size: 0.78rem; }
     th, td { padding: 0.6rem 0.75rem; }
-    .tabs-nav { overflow-x: auto; width: 100%; }
   }
 </style>
 </head>
@@ -273,510 +202,285 @@
     {% endfor %}
   {% endwith %}
  
-  {% if not has_mfa %}
-  <div class="mfa-banner">
-    <span>🔐 <strong>Recomendamos activar 2FA</strong> — Tu cuenta aún no tiene autenticación de dos factores.</span>
-    <a href="/mfa/setup">Activar ahora →</a>
-  </div>
-  {% endif %}
- 
-  <div id="processingBanner" style="display:none;" class="flash">
-    <span id="processingMsg"></span>
-  </div>
- 
   <div class="page-header">
     <h1>Bienvenido, {{ user.nombre }}</h1>
-    <p>Panel de facturas, análisis de gastos y cruce de ITBMS.</p>
+    <p>Aqui puedes subir tus facturas y ver el estado de procesamiento en tiempo real.</p>
   </div>
  
-  <!-- METRICAS GLOBALES -->
-  {% set total_c = facturas | length %}
-  {% set monto_c = facturas | sum(attribute='Monto_Total') if facturas else 0 %}
-  {% set total_v = ventas | length %}
-  {% set monto_v = ventas | sum(attribute='Monto_Total') if ventas else 0 %}
+  <!-- METRICAS -->
+  {% set total = facturas | length %}
+  {% set monto = facturas | sum(attribute='Monto_Total') if facturas else 0 %}
+  {% set confianza = (facturas | sum(attribute='Confianza') / total) if total > 0 else 0 %}
+  {% set proveedores = facturas | map(attribute='Proveedor') | unique | list | length if facturas else 0 %}
  
   <div class="metrics">
     <div class="metric-card">
-      <div class="metric-label">Facturas Compras</div>
-      <div class="metric-value green">{{ total_c }}</div>
+      <div class="metric-label">Total Facturas</div>
+      <div class="metric-value">{{ total }}</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Total Compras</div>
-      <div class="metric-value green">B/.{{ "{:,.2f}".format(monto_c) }}</div>
+      <div class="metric-label">Monto Total</div>
+      <div class="metric-value green">${{ "{:,.2f}".format(monto) }}</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Facturas Ventas</div>
-      <div class="metric-value purple">{{ total_v }}</div>
+      <div class="metric-label">Confianza Promedio</div>
+      <div class="metric-value blue">{{ "{:.1f}".format(confianza) }}%</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Total Ventas</div>
-      <div class="metric-value purple">B/.{{ "{:,.2f}".format(monto_v) }}</div>
+      <div class="metric-label">Proveedores</div>
+      <div class="metric-value amber">{{ proveedores }}</div>
     </div>
   </div>
  
-  <!-- TABS PRINCIPALES -->
-  <div class="tabs-nav">
-    <button class="tab-btn active" data-tab="compras">
-      <span class="tab-dot compras"></span> Compras
-    </button>
-    <button class="tab-btn" data-tab="analisis">
-      📊 Análisis
-    </button>
-    <button class="tab-btn" data-tab="ventas">
-      <span class="tab-dot ventas"></span> Ventas
-    </button>
-    <button class="tab-btn" data-tab="cruce">
-      <span class="tab-dot cruce"></span> Cruce ITBMS
-    </button>
+  <!-- GRAFICAS -->
+  {% if facturas %}
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title">Gasto por Proveedor</div>
+      <div class="chart-sub">Top proveedores segun monto total facturado</div>
+      <div class="chart-wrap"><canvas id="chartProveedores"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Distribucion por Moneda</div>
+      <div class="chart-sub">Proporcion de facturas segun moneda</div>
+      <div class="chart-wrap"><canvas id="chartMoneda"></canvas></div>
+    </div>
+    <div class="chart-card wide">
+      <div class="chart-title">Evolucion de Gastos Acumulados</div>
+      <div class="chart-sub">Monto acumulado por orden de procesamiento</div>
+      <div class="chart-wrap tall"><canvas id="chartTendencia"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Nivel de Confianza IA</div>
+      <div class="chart-sub">Distribucion por precision de extraccion</div>
+      <div class="chart-wrap"><canvas id="chartConfianza"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Cantidad por Proveedor</div>
+      <div class="chart-sub">Numero de facturas por cada proveedor</div>
+      <div class="chart-wrap"><canvas id="chartCantidad"></canvas></div>
+    </div>
+  </div>
+  {% endif %}
+ 
+
+  <!-- INSIGHTS ACCIONABLES -->
+  {% if facturas %}
+  {% set pendientes_viejas = [] %}
+  {% set baja_confianza = [] %}
+  {% set posibles_duplicados = [] %}
+  {% for f in facturas %}
+    {% if f.get('Estado','pendiente') == 'pendiente' and f.get('Fecha_Procesado') %}
+      {# Solo marcamos si el campo existe; el filtro de días lo hace el backend #}
+    {% endif %}
+  {% endfor %}
+  <div class="insights">
+    {% if insights.pendientes_antiguas > 0 %}
+    <div class="insight-card warn">
+      <div class="insight-icon">⏳</div>
+      <div class="insight-text">
+        <strong>{{ insights.pendientes_antiguas }} factura{{ 's' if insights.pendientes_antiguas > 1 }} sin revisar</strong>
+        <span>Llevan más de 7 días en estado "pendiente" sin acción.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.baja_confianza > 0 %}
+    <div class="insight-card alert">
+      <div class="insight-icon">⚠️</div>
+      <div class="insight-text">
+        <strong>{{ insights.baja_confianza }} con confianza baja (&lt;70%)</strong>
+        <span>La IA tuvo dificultad. Verifica los datos manualmente.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.posibles_duplicados > 0 %}
+    <div class="insight-card info">
+      <div class="insight-icon">🔁</div>
+      <div class="insight-text">
+        <strong>{{ insights.posibles_duplicados }} posible{{ 's' if insights.posibles_duplicados > 1 }} duplicado{{ 's' if insights.posibles_duplicados > 1 }}</strong>
+        <span>Mismo proveedor, monto y fecha en más de una factura.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.aprobadas_hoy > 0 %}
+    <div class="insight-card ok">
+      <div class="insight-icon">✅</div>
+      <div class="insight-text">
+        <strong>{{ insights.aprobadas_hoy }} aprobada{{ 's' if insights.aprobadas_hoy > 1 }} hoy</strong>
+        <span>Listas para incluir en la próxima exportación DGI.</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if insights.pendientes_antiguas == 0 and insights.baja_confianza == 0 and insights.posibles_duplicados == 0 %}
+    <div class="insight-card ok">
+      <div class="insight-icon">✅</div>
+      <div class="insight-text">
+        <strong>Todo en orden</strong>
+        <span>No hay facturas pendientes de atención inmediata.</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- BANNER DE PROCESAMIENTO EN BACKGROUND -->
+  <div id="processingBanner" style="display:none;" class="flash" style="margin-bottom:1.5rem;">
+    <span id="processingMsg"></span>
   </div>
  
-  <!-- ══════════════ TAB: COMPRAS ══════════════ -->
-  <div class="tab-pane active" id="tab-compras">
+  <!-- UPLOAD -->
+  <div class="upload-section">
+    <h2>Subir Facturas</h2>
+    <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="upload-zone" id="dropZone">
+        <input type="file" name="files[]" multiple accept=".pdf,.txt,.xlsx,.xls,.xml,.jpg,.jpeg,.png,.webp" id="fileInput">
+        <div class="upload-icon">&#128196;</div>
+        <p>Arrastra tus facturas aqui o <span>selecciona archivos</span></p>
+        <small>PDF, TXT, XLSX, XML e-Tax 2.0, <strong style="color:var(--accent)">JPG/PNG (foto de factura)</strong> &mdash; hasta 10MB</small>
+      </div>
+      <div class="file-list" id="fileList"></div>
+      <button type="submit" class="upload-btn" id="uploadBtn">Procesar facturas</button>
+    </form>
+  </div>
  
-    <!-- Upload compras -->
-    <div class="upload-section">
-      <h2>Subir Facturas de Compras</h2>
-      <div class="upload-zone" id="dropZoneCompras">
-        <input type="file" id="fileInputCompras" name="files[]" multiple
-               accept=".pdf,.txt,.xlsx,.xls,.xml,.jpg,.jpeg,.png,.webp">
-        <div class="upload-icon">📥</div>
-        <p>Arrastra tus facturas aquí o <span class="c">selecciona archivos</span></p>
-        <small>PDF, XML e-Tax, Excel, imágenes · máx 20 archivos · 10 MB c/u</small>
-      </div>
-      <div class="file-list" id="fileListCompras"></div>
-      <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadFormCompras">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="tipo" value="compra">
-        <input type="file" name="files[]" id="hiddenFilesCompras" multiple style="display:none">
-        <button type="submit" class="upload-btn" id="uploadBtnCompras">⬆ Subir y Procesar</button>
-      </form>
-    </div>
- 
-    {% if facturas %}
-    <!-- Gráficas compras -->
-    <div class="charts-grid">
-      <div class="chart-card">
-        <div class="chart-title">Gasto por Proveedor</div>
-        <div class="chart-sub">Top proveedores por monto total</div>
-        <div class="chart-wrap"><canvas id="chartProveedores"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Distribución por Moneda</div>
-        <div class="chart-sub">Proporción de facturas según moneda</div>
-        <div class="chart-wrap"><canvas id="chartMoneda"></canvas></div>
-      </div>
-      <div class="chart-card wide">
-        <div class="chart-title">Evolución de Gastos Acumulados</div>
-        <div class="chart-sub">Monto acumulado por orden de procesamiento</div>
-        <div class="chart-wrap tall"><canvas id="chartTendencia"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Nivel de Confianza IA</div>
-        <div class="chart-sub">Distribución por precisión de extracción</div>
-        <div class="chart-wrap"><canvas id="chartConfianza"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Cantidad por Proveedor</div>
-        <div class="chart-sub">Número de facturas por proveedor</div>
-        <div class="chart-wrap"><canvas id="chartCantidad"></canvas></div>
-      </div>
-    </div>
-    {% endif %}
- 
-    <!-- Insights -->
-    {% if facturas %}
-    <div class="insights">
-      {% if insights.pendientes_antiguas > 0 %}
-      <div class="insight-card warn">
-        <div class="insight-icon">⏰</div>
-        <div class="insight-text">
-          <strong>{{ insights.pendientes_antiguas }} factura(s) sin revisar</strong>
-          <span>Llevan más de 7 días en estado pendiente.</span>
-        </div>
-      </div>
-      {% endif %}
-      {% if insights.baja_confianza > 0 %}
-      <div class="insight-card alert">
-        <div class="insight-icon">⚠️</div>
-        <div class="insight-text">
-          <strong>{{ insights.baja_confianza }} con baja confianza IA</strong>
-          <span>Verificar manualmente antes de aprobar.</span>
-        </div>
-      </div>
-      {% endif %}
-      {% if insights.posibles_duplicados > 0 %}
-      <div class="insight-card info">
-        <div class="insight-icon">🔁</div>
-        <div class="insight-text">
-          <strong>{{ insights.posibles_duplicados }} posible(s) duplicado(s)</strong>
-          <span>Mismo proveedor, monto y fecha detectados.</span>
-        </div>
-      </div>
-      {% endif %}
-      {% if insights.aprobadas_hoy > 0 %}
-      <div class="insight-card ok">
-        <div class="insight-icon">✅</div>
-        <div class="insight-text">
-          <strong>{{ insights.aprobadas_hoy }} aprobada(s) hoy</strong>
-          <span>Listas para incluir en el F103.</span>
-        </div>
-      </div>
-      {% endif %}
-    </div>
-    {% endif %}
- 
-    <!-- Tabla compras -->
-    <div class="table-section">
-      <div class="table-header">
-        <h2>Facturas de Compras</h2>
-        {% if facturas %}
-        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-          <a href="/download-dgi" class="download-btn" title="Solo aprobadas, formato DGI Panamá">📄 Exportar DGI</a>
-          <a href="/download-formulario103" class="download-btn" title="Formulario 103 ITBMS" style="border-color:rgba(245,158,11,0.4);color:var(--accent3);">📋 Formulario 103</a>
-          <a href="/download-excel" class="download-btn">↓ Excel Compras</a>
-        </div>
-        {% endif %}
-      </div>
- 
+  <!-- TABLE -->
+  <div class="table-section">
+    <div class="table-header">
+      <h2>Facturas Procesadas</h2>
       {% if facturas %}
-      <div class="filter-bar">
-        <input type="search" id="searchInputC" class="filter-search" placeholder="🔍  Buscar proveedor, RUC, archivo...">
-        <select id="filterEstadoC" class="filter-select">
-          <option value="">Todos los estados</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="aprobada">Aprobada</option>
-          <option value="en_revision">En Revisión</option>
-          <option value="rechazada">Rechazada</option>
-        </select>
-        <select id="filterCategoriaC" class="filter-select">
-          <option value="">Todas las categorías</option>
-          <option>Servicios</option>
-          <option>Materiales y Suministros</option>
-          <option>Transporte y Logistica</option>
-          <option>Tecnologia y Software</option>
-          <option>Nomina y RRHH</option>
-          <option>Alquiler e Inmuebles</option>
-          <option>Publicidad y Marketing</option>
-          <option>Impuestos y Tasas</option>
-          <option>Alimentacion</option>
-          <option>Otros</option>
-        </select>
-        <button class="filter-reset" id="btnResetC">✕ Limpiar</button>
-        <span class="filter-count" id="filterCountC"></span>
+      <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+        <a href="/download-dgi" class="download-btn" title="Solo facturas aprobadas, formato DGI Panamá">&#128196; Exportar DGI</a>
+        <a href="/download-formulario103" class="download-btn" title="Formulario 103 precompletado — declaración de compras ITBMS" style="border-color:rgba(245,158,11,0.4);color:var(--accent3);">&#128203; Formulario 103</a>
+        <a href="/download-excel" class="download-btn">&#8595; Excel Completo</a>
       </div>
       {% endif %}
- 
-      {% if not facturas %}
-        <div class="empty-state">
-          <div class="empty-icon">📄</div>
-          <p>Aún no tienes facturas de compras. Sube tu primera factura arriba.</p>
-        </div>
-      {% else %}
-        <table>
-          <thead>
-            <tr>
-              <th>Proveedor</th><th>RUC</th><th>Fecha</th><th>Monto</th>
-              <th>ITBMS</th><th>Fuente</th><th>Confianza</th><th>Estado</th><th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for f in facturas %}
-            {% set fid = loop.index %}
-            <tr class="factura-row"
-                data-proveedor="{{ f.get('Proveedor','') | lower }}"
-                data-ruc="{{ f.get('RUC','') | lower }}"
-                data-archivo="{{ f.get('Archivo','') | lower }}"
-                data-estado="{{ f.get('Estado','pendiente') or 'pendiente' }}"
-                data-categoria="{{ f.get('Categoria','Otros') | lower }}">
-              <td>
-                <div class="td-proveedor">{{ f.get('Proveedor', '') }}</div>
-                <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">{{ f.get('Archivo', '')[:30] }}</div>
-              </td>
-              <td>{{ f.get('RUC', '') or '—' }}</td>
-              <td>{{ f.get('Fecha', '') or '—' }}</td>
-              <td class="td-monto">B/.{{ "{:,.2f}".format(f.get('Monto_Total', 0) or 0) }}</td>
-              <td style="color:var(--muted)">
-                {% if f.get('ITBMS') %}B/.{{ "{:,.2f}".format(f.get('ITBMS', 0) or 0) }}{% else %}—{% endif %}
-              </td>
-              <td>
-                {% if f.get('Fuente') == 'xml_etax' %}<span class="badge high">🧾 e-Tax</span>
-                {% elif f.get('Fuente') == 'vision' %}<span class="badge badge-foto">📷 Foto</span>
-                {% elif f.get('Fuente') == 'manual' %}<span class="badge badge-manual">✏ Manual</span>
-                {% else %}<span class="badge mid">🤖 IA</span>{% endif %}
-              </td>
-              <td>
-                {% set conf = f.get('Confianza', 0) or 0 %}
-                <div class="conf-wrap">
-                  <div class="conf-bar"><div class="conf-fill {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}" style="width:{{ conf }}%"></div></div>
-                  <span class="badge {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}">{{ conf }}%</span>
-                </div>
-              </td>
-              <td>
-                {% set estado = f.get('Estado', 'pendiente') or 'pendiente' %}
-                <span class="estado-badge estado-{{ estado }}">
-                  {% if estado == 'aprobada' %}✓ Aprobada
-                  {% elif estado == 'en_revision' %}⏳ En Revisión
-                  {% elif estado == 'rechazada' %}✗ Rechazada
-                  {% else %}● Pendiente{% endif %}
-                </span>
-                {% if f.get('Comentario_Estado') %}
-                  <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ f.get('Comentario_Estado') }}">{{ f.get('Comentario_Estado') }}</div>
-                {% endif %}
-              </td>
-              <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
-                <a href="/factura/ver/{{ f.get('id') }}" target="_blank" rel="noopener" class="action-btn btn-ver">👁 Ver</a>
-                <button class="action-btn btn-gestionar" data-idx="{{ fid }}" data-proveedor="{{ f.get('Proveedor', '')|e }}" data-estado="{{ f.get('Estado', 'pendiente') or 'pendiente' }}">Gestionar</button>
-                <button class="action-btn edit-btn btn-editar" data-idx="{{ fid }}">✏ Editar</button>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      {% endif %}
     </div>
-  </div><!-- /tab-compras -->
  
-  <!-- ══════════════ TAB: ANÁLISIS DE GASTOS POR CATEGORÍA ══════════════ -->
-  <div class="tab-pane" id="tab-analisis">
     {% if facturas %}
-    <div class="cat-grid">
-      <!-- Donut categorías -->
-      <div class="cat-card">
-        <div class="chart-title">Gastos por Categoría</div>
-        <div class="chart-sub">Distribución porcentual de todas las compras</div>
-        <div class="chart-wrap" style="height:280px;"><canvas id="chartCatDonut"></canvas></div>
-      </div>
- 
-      <!-- Breakdown list -->
-      <div class="cat-card">
-        <div class="chart-title">Detalle por Categoría</div>
-        <div class="chart-sub">Monto y porcentaje del total de compras</div>
-        <div id="catBreakdownList" class="cat-list"></div>
-      </div>
- 
-      <!-- Bar horizontal de categorías por monto -->
-      <div class="cat-card wide">
-        <div class="chart-title">Monto por Categoría</div>
-        <div class="chart-sub">Comparativo absoluto en B/.</div>
-        <div class="chart-wrap tall"><canvas id="chartCatBar"></canvas></div>
-      </div>
- 
-      <!-- Tendencia mensual por categoría -->
-      <div class="cat-card wide">
-        <div class="chart-title">Evolución Mensual por Categoría (Top 5)</div>
-        <div class="chart-sub">Gasto mensual de las principales categorías</div>
-        <div class="chart-wrap tall"><canvas id="chartCatMensual"></canvas></div>
-      </div>
+    <div class="filter-bar">
+      <input type="search" id="searchInput" class="filter-search" placeholder="🔍  Buscar proveedor, RUC, archivo...">
+      <select id="filterEstado" class="filter-select">
+        <option value="">Todos los estados</option>
+        <option value="pendiente">Pendiente</option>
+        <option value="aprobada">Aprobada</option>
+        <option value="en_revision">En Revisión</option>
+        <option value="rechazada">Rechazada</option>
+      </select>
+      <select id="filterCategoria" class="filter-select">
+        <option value="">Todas las categorías</option>
+        <option>Servicios</option>
+        <option>Materiales y Suministros</option>
+        <option>Transporte y Logistica</option>
+        <option>Tecnologia y Software</option>
+        <option>Nomina y RRHH</option>
+        <option>Alquiler e Inmuebles</option>
+        <option>Publicidad y Marketing</option>
+        <option>Impuestos y Tasas</option>
+        <option>Alimentacion</option>
+        <option>Otros</option>
+      </select>
+      <button class="filter-reset" id="btnResetFiltros">✕ Limpiar</button>
+      <span class="filter-count" id="filterCount"></span>
     </div>
+    {% endif %}
+    {% if not facturas %}
+      <div class="empty-state">
+        <div class="empty-icon">&#128196;</div>
+        <p>Aun no tienes facturas procesadas. Sube tu primera factura arriba.</p>
+      </div>
     {% else %}
-    <div class="empty-state" style="padding:4rem 2rem;text-align:center;color:var(--muted);">
-      <div class="empty-icon">📊</div>
-      <p>Sube facturas de compras para ver el análisis por categoría.</p>
-    </div>
-    {% endif %}
-  </div><!-- /tab-analisis -->
- 
-  <!-- ══════════════ TAB: VENTAS ══════════════ -->
-  <div class="tab-pane" id="tab-ventas">
- 
-    <!-- Upload ventas -->
-    <div class="upload-section">
-      <h2>Subir Facturas de Ventas</h2>
-      <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1.25rem;">Sube las facturas que <strong style="color:var(--ventas-color)">tú emites</strong> a tus clientes — PDFs, XML e-Tax, o imágenes.</p>
-      <div class="upload-zone ventas-zone" id="dropZoneVentas">
-        <input type="file" id="fileInputVentas" name="files[]" multiple
-               accept=".pdf,.txt,.xlsx,.xls,.xml,.jpg,.jpeg,.png,.webp">
-        <div class="upload-icon">📤</div>
-        <p>Arrastra tus facturas de ventas aquí o <span class="v">selecciona archivos</span></p>
-        <small>PDF, XML e-Tax, Excel, imágenes · máx 20 archivos · 10 MB c/u</small>
-      </div>
-      <div class="file-list" id="fileListVentas"></div>
-      <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadFormVentas">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="tipo" value="venta">
-        <input type="file" name="files[]" id="hiddenFilesVentas" multiple style="display:none">
-        <button type="submit" class="upload-btn ventas-btn" id="uploadBtnVentas">⬆ Subir y Procesar Ventas</button>
-      </form>
-    </div>
- 
-    {% if ventas %}
-    <!-- Gráficas ventas -->
-    <div class="charts-grid">
-      <div class="chart-card">
-        <div class="chart-title">Ventas por Cliente</div>
-        <div class="chart-sub">Top clientes por monto facturado</div>
-        <div class="chart-wrap"><canvas id="chartVClientesMonto"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Distribución por Categoría</div>
-        <div class="chart-sub">Qué tipo de servicio/producto vendes más</div>
-        <div class="chart-wrap"><canvas id="chartVCategorias"></canvas></div>
-      </div>
-      <div class="chart-card wide">
-        <div class="chart-title">Evolución de Ventas Acumuladas</div>
-        <div class="chart-sub">Monto acumulado de facturas emitidas</div>
-        <div class="chart-wrap tall"><canvas id="chartVTendencia"></canvas></div>
-      </div>
-    </div>
-    {% endif %}
- 
-    <!-- Tabla ventas -->
-    <div class="table-section">
-      <div class="table-header">
-        <h2>Facturas de Ventas</h2>
-        {% if ventas %}
-        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
-          <a href="/download-dgi?tipo=venta" class="download-btn ventas" title="Ventas aprobadas, formato DGI">📄 Exportar DGI Ventas</a>
-          <a href="/download-excel?tipo=venta" class="download-btn ventas">↓ Excel Ventas</a>
-        </div>
-        {% endif %}
-      </div>
- 
-      {% if ventas %}
-      <div class="filter-bar">
-        <input type="search" id="searchInputV" class="filter-search" placeholder="🔍  Buscar cliente, RUC, archivo...">
-        <select id="filterEstadoV" class="filter-select">
-          <option value="">Todos los estados</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="aprobada">Aprobada</option>
-          <option value="en_revision">En Revisión</option>
-          <option value="rechazada">Rechazada</option>
-        </select>
-        <button class="filter-reset" id="btnResetV">✕ Limpiar</button>
-        <span class="filter-count" id="filterCountV"></span>
-      </div>
-      {% endif %}
- 
-      {% if not ventas %}
-        <div class="empty-state">
-          <div class="empty-icon">📤</div>
-          <p>Aún no tienes facturas de ventas. Sube las facturas que emites arriba.</p>
-        </div>
-      {% else %}
-        <table>
-          <thead>
-            <tr>
-              <th>Cliente</th><th>RUC</th><th>Fecha</th><th>Monto</th>
-              <th>ITBMS</th><th>Fuente</th><th>Confianza</th><th>Estado</th><th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for f in ventas %}
-            {% set fid = "v" ~ loop.index %}
-            <tr class="venta-row"
-                data-proveedor="{{ f.get('Proveedor','') | lower }}"
-                data-ruc="{{ f.get('RUC','') | lower }}"
-                data-estado="{{ f.get('Estado','pendiente') or 'pendiente' }}">
-              <td>
-                <div class="td-proveedor">{{ f.get('Proveedor', '') }}</div>
-                <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">{{ f.get('Archivo', '')[:30] }}</div>
-              </td>
-              <td>{{ f.get('RUC', '') or '—' }}</td>
-              <td>{{ f.get('Fecha', '') or '—' }}</td>
-              <td class="td-monto venta">B/.{{ "{:,.2f}".format(f.get('Monto_Total', 0) or 0) }}</td>
-              <td style="color:var(--ventas-color)">
-                {% if f.get('ITBMS') %}B/.{{ "{:,.2f}".format(f.get('ITBMS', 0) or 0) }}{% else %}—{% endif %}
-              </td>
-              <td>
-                {% if f.get('Fuente') == 'xml_etax' %}<span class="badge high">🧾 e-Tax</span>
-                {% elif f.get('Fuente') == 'vision' %}<span class="badge badge-foto">📷 Foto</span>
-                {% elif f.get('Fuente') == 'manual' %}<span class="badge badge-manual">✏ Manual</span>
-                {% else %}<span class="badge mid">🤖 IA</span>{% endif %}
-              </td>
-              <td>
-                {% set conf = f.get('Confianza', 0) or 0 %}
-                <div class="conf-wrap">
-                  <div class="conf-bar"><div class="conf-fill {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}" style="width:{{ conf }}%"></div></div>
-                  <span class="badge {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}">{{ conf }}%</span>
+      <table>
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th>RUC</th>
+            <th>Fecha</th>
+            <th>Monto</th>
+            <th>ITBMS</th>
+            <th>Fuente</th>
+            <th>Confianza</th>
+            <th>Estado</th>
+            <th>Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in facturas %}
+          {% set fid = loop.index %}
+          <tr class="factura-row"
+              data-proveedor="{{ f.get('Proveedor','') | lower }}"
+              data-ruc="{{ f.get('RUC','') | lower }}"
+              data-archivo="{{ f.get('Archivo','') | lower }}"
+              data-estado="{{ f.get('Estado','pendiente') or 'pendiente' }}"
+              data-categoria="{{ f.get('Categoria','Otros') | lower }}">
+            <td>
+              <div class="td-proveedor">{{ f.get('Proveedor', '') }}</div>
+              <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">{{ f.get('Archivo', '')[:30] }}</div>
+            </td>
+            <td>{{ f.get('RUC', '') or '—' }}</td>
+            <td>{{ f.get('Fecha', '') or '—' }}</td>
+            <td class="td-monto">${{ "{:,.2f}".format(f.get('Monto_Total', 0) or 0) }}</td>
+            <td style="color:var(--muted)">
+              {% if f.get('ITBMS') %}${{ "{:,.2f}".format(f.get('ITBMS', 0) or 0) }}{% else %}—{% endif %}
+            </td>
+            <td>
+              {% if f.get('Fuente') == 'xml_etax' %}
+                <span class="badge high">🧾 e-Tax</span>
+              {% elif f.get('Fuente') == 'vision' %}
+                <span class="badge badge-foto">📷 Foto</span>
+              {% elif f.get('Fuente') == 'manual' %}
+                <span class="badge badge-manual">✏ Manual</span>
+              {% else %}
+                <span class="badge mid">🤖 IA</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set conf = f.get('Confianza', 0) or 0 %}
+              <div class="conf-wrap">
+                <div class="conf-bar">
+                  <div class="conf-fill {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}"
+                       style="width:{{ conf }}%"></div>
                 </div>
-              </td>
-              <td>
-                {% set estado = f.get('Estado', 'pendiente') or 'pendiente' %}
-                <span class="estado-badge estado-{{ estado }}">
-                  {% if estado == 'aprobada' %}✓ Aprobada
-                  {% elif estado == 'en_revision' %}⏳ En Revisión
-                  {% elif estado == 'rechazada' %}✗ Rechazada
-                  {% else %}● Pendiente{% endif %}
-                </span>
-              </td>
-              <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
-                <a href="/factura/ver/{{ f.get('id') }}?tipo=venta" target="_blank" rel="noopener" class="action-btn btn-ver">👁 Ver</a>
-                <button class="action-btn btn-gestionar-v"
-                        data-id="{{ f.get('id') }}"
-                        data-proveedor="{{ f.get('Proveedor', '')|e }}"
-                        data-estado="{{ f.get('Estado', 'pendiente') or 'pendiente' }}">Gestionar</button>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      {% endif %}
-    </div>
-  </div><!-- /tab-ventas -->
- 
-  <!-- ══════════════ TAB: CRUCE ITBMS ══════════════ -->
-  <div class="tab-pane" id="tab-cruce">
-    <!-- Balance bar -->
-    <div class="balance-bar-wrap">
-      <div class="balance-bar-title">Balance ITBMS — Crédito Fiscal vs Débito Fiscal</div>
-      <div class="balance-bar-sub">Compras generan crédito (lo que puedes descontar). Ventas generan débito (lo que debes pagar a DGI).</div>
-      <div class="bbar" id="balanceBar">
-        <div class="bbar-compras" id="bbarCompras" style="width:50%">Crédito</div>
-        <div class="bbar-ventas"  id="bbarVentas"  style="width:50%">Débito</div>
-      </div>
-      <div class="bbar-legend">
-        <div class="bbar-leg-item"><div class="bbar-leg-dot" style="background:var(--compras-color)"></div> Crédito (ITBMS compras)</div>
-        <div class="bbar-leg-item"><div class="bbar-leg-dot" style="background:var(--ventas-color)"></div> Débito (ITBMS ventas)</div>
-      </div>
-    </div>
- 
-    <!-- KPIs cruce -->
-    <div class="cruce-grid">
-      <div class="cruce-card">
-        <div class="cruce-label">ITBMS Crédito (Compras)</div>
-        {% set itbms_c = facturas | selectattr('Estado', 'equalto', 'aprobada') | sum(attribute='ITBMS') if facturas else 0 %}
-        <div class="cruce-value green">B/.{{ "{:,.2f}".format(itbms_c) }}</div>
-        <div class="cruce-sub">Facturas de compras aprobadas</div>
-      </div>
-      <div class="cruce-card">
-        <div class="cruce-label">ITBMS Débito (Ventas)</div>
-        {% set itbms_v = ventas | selectattr('Estado', 'equalto', 'aprobada') | sum(attribute='ITBMS') if ventas else 0 %}
-        <div class="cruce-value" style="color:var(--ventas-color)">B/.{{ "{:,.2f}".format(itbms_v) }}</div>
-        <div class="cruce-sub">Facturas de ventas aprobadas</div>
-      </div>
-      <div class="cruce-card">
-        <div class="cruce-label">Saldo ITBMS a Pagar</div>
-        {% set saldo = itbms_v - itbms_c %}
-        <div class="cruce-value {% if saldo <= 0 %}green{% else %}red{% endif %}">
-          {% if saldo <= 0 %}B/.0.00 ✓{% else %}B/.{{ "{:,.2f}".format(saldo) }}{% endif %}
-        </div>
-        <div class="cruce-sub">
-          {% if saldo <= 0 %}Crédito cubre el débito — sin pago adicional{% else %}Diferencia a declarar ante DGI{% endif %}
-        </div>
-      </div>
-    </div>
- 
-    {% if facturas or ventas %}
-    <!-- Gráfica cruce mensual -->
-    <div class="chart-card" style="margin-bottom:2rem;">
-      <div class="chart-title">Cruce Mensual ITBMS</div>
-      <div class="chart-sub">Crédito (compras) vs Débito (ventas) por mes</div>
-      <div class="chart-wrap tall"><canvas id="chartCruceMensual"></canvas></div>
-    </div>
+                <span class="badge {% if conf >= 85 %}high{% elif conf >= 60 %}mid{% else %}low{% endif %}">{{ conf }}%</span>
+              </div>
+            </td>
+            <td>
+              {% set estado = f.get('Estado', 'pendiente') or 'pendiente' %}
+              <span class="estado-badge estado-{{ estado }}">
+                {% if estado == 'aprobada' %}✓ Aprobada
+                {% elif estado == 'en_revision' %}⏳ En Revisión
+                {% elif estado == 'rechazada' %}✗ Rechazada
+                {% else %}● Pendiente{% endif %}
+              </span>
+              {% if f.get('Comentario_Estado') %}
+                <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ f.get('Comentario_Estado') }}">{{ f.get('Comentario_Estado') }}</div>
+              {% endif %}
+            </td>
+            <td style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+              <a href="/factura/ver/{{ f.get('id') }}" target="_blank" rel="noopener"
+                 class="action-btn btn-ver" title="Ver archivo original en nueva pestaña">
+                👁 Ver
+              </a>
+              <button class="action-btn btn-gestionar"
+                      data-idx="{{ fid }}"
+                      data-proveedor="{{ f.get('Proveedor', '')|e }}"
+                      data-estado="{{ f.get('Estado', 'pendiente') or 'pendiente' }}">
+                Gestionar
+              </button>
+              <button class="action-btn edit-btn btn-editar" data-idx="{{ fid }}">
+                ✏ Editar
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     {% endif %}
+  </div>
  
-    <!-- Notas legales -->
-    <div style="background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.15);border-radius:14px;padding:1.25rem 1.5rem;font-size:0.82rem;color:var(--muted);line-height:1.7;">
-      <strong style="color:var(--accent3);display:block;margin-bottom:0.5rem;">📋 Nota fiscal — Art. 1057-V Código Fiscal de Panamá</strong>
-      El ITBMS es un impuesto al valor agregado del 7% (tasa general). Las compras con ITBMS generan crédito fiscal que se descuenta del débito generado por las ventas.
-      Si el crédito supera el débito en un período, el exceso puede arrastrarse al siguiente. Presentar el Formulario 103 antes del día 15 de cada mes.
-      <br><strong style="color:var(--accent3);">Este análisis es orientativo — verifica siempre con tu contador antes de declarar.</strong>
-    </div>
-  </div><!-- /tab-cruce -->
+</div>
  
-</div><!-- /container -->
- 
-<!-- MODAL GESTIÓN COMPRAS -->
+<!-- MODAL APROBACION -->
 <div id="modalOverlay" class="modal-overlay">
   <div class="modal-card">
     <div class="modal-header">
@@ -789,7 +493,6 @@
     <form method="POST" action="/factura/estado" id="modalForm">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="factura_id" id="modalFacturaId">
-      <input type="hidden" name="tipo" value="compra">
       <div class="modal-estados">
         <label class="estado-opcion" data-estado="aprobada">
           <input type="radio" name="estado" value="aprobada" required>
@@ -808,595 +511,418 @@
           <span class="estado-dot pendiente"></span> Pendiente
         </label>
       </div>
-      <div class="form-group-modal" style="margin-bottom:1.25rem;">
+      <div class="form-group-modal">
         <label class="modal-label">Comentario (opcional)</label>
-        <textarea name="comentario" rows="3" placeholder="Motivo del cambio..."></textarea>
+        <textarea name="comentario" id="modalComentario" placeholder="Ej: Falta número de orden de compra..." rows="3"></textarea>
       </div>
-      <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;">
         <button type="button" class="btn-cancel btn-cerrar-modal">Cancelar</button>
-        <button type="submit" class="btn-guardar">Guardar</button>
+        <button type="submit" class="btn-guardar">Guardar estado</button>
       </div>
     </form>
   </div>
 </div>
  
-<!-- MODAL GESTIÓN VENTAS -->
-<div id="modalVentasOverlay" class="modal-overlay">
-  <div class="modal-card">
-    <div class="modal-header">
-      <div>
-        <div class="modal-title" id="modalVTitle">Gestionar Venta</div>
-        <div class="modal-sub" id="modalVSub"></div>
-      </div>
-      <button class="modal-close btn-cerrar-modal-v">✕</button>
-    </div>
-    <form method="POST" action="/factura/estado" id="modalVForm">
-      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="factura_id" id="modalVFacturaId">
-      <input type="hidden" name="tipo" value="venta">
-      <div class="modal-estados">
-        <label class="estado-opcion"><input type="radio" name="estado" value="aprobada" required>
-          <span class="estado-dot aprobada"></span> Aprobada</label>
-        <label class="estado-opcion"><input type="radio" name="estado" value="en_revision">
-          <span class="estado-dot en_revision"></span> En revisión</label>
-        <label class="estado-opcion"><input type="radio" name="estado" value="rechazada">
-          <span class="estado-dot rechazada"></span> Rechazada</label>
-        <label class="estado-opcion"><input type="radio" name="estado" value="pendiente">
-          <span class="estado-dot pendiente"></span> Pendiente</label>
-      </div>
-      <div class="form-group-modal" style="margin-bottom:1.25rem;">
-        <label class="modal-label">Comentario (opcional)</label>
-        <textarea name="comentario" rows="3" placeholder="Motivo del cambio..."></textarea>
-      </div>
-      <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
-        <button type="button" class="btn-cancel btn-cerrar-modal-v">Cancelar</button>
-        <button type="submit" class="btn-guardar" style="background:var(--ventas-color);color:#fff;">Guardar</button>
-      </div>
-    </form>
-  </div>
-</div>
- 
-<!-- MODAL EDICIÓN COMPRAS -->
+<!-- MODAL EDICION DE CAMPOS -->
 <div id="editOverlay" class="modal-overlay">
   <div class="modal-card wide">
     <div class="modal-header">
       <div>
-        <div class="modal-title">Editar Factura</div>
-        <div class="modal-sub" id="editSub">Corrección manual — confianza se establece a 100%</div>
+        <div class="modal-title">✏ Corregir datos de factura</div>
+        <div class="modal-sub" id="editSub">Los cambios sobrescriben lo que extrajo la IA</div>
       </div>
-      <button class="modal-close btn-cerrar-edit">✕</button>
+      <button class="modal-close btn-cerrar-edicion">✕</button>
     </div>
     <form method="POST" action="/factura/editar" id="editForm">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="factura_id" id="editFacturaId">
       <div class="edit-grid">
         <div class="edit-field full">
-          <label>Proveedor *</label>
-          <input type="text" name="proveedor" id="editProveedor" maxlength="200" required>
+          <label>Proveedor</label>
+          <input type="text" name="proveedor" id="editProveedor" placeholder="Nombre del proveedor" maxlength="200">
         </div>
         <div class="edit-field">
           <label>RUC</label>
-          <input type="text" name="ruc" id="editRuc" maxlength="30">
-          <div class="edit-nota" id="rucStatus"></div>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <input type="text" name="ruc" id="editRuc" placeholder="8-123-45678" maxlength="30" style="flex:1;">
+            <button type="button" id="btnValidarRuc" class="action-btn" style="white-space:nowrap;flex-shrink:0;" title="Verificar RUC en el portal DGI">🔍 DGI</button>
+          </div>
+          <div id="rucStatus" class="edit-nota" style="margin-top:0.35rem;"></div>
         </div>
         <div class="edit-field">
           <label>Fecha</label>
-          <input type="date" name="fecha" id="editFecha">
+          <input type="text" name="fecha" id="editFecha" placeholder="DD/MM/AAAA" maxlength="10">
         </div>
         <div class="edit-field">
-          <label>Monto Total *</label>
-          <input type="number" name="monto_total" id="editMonto" step="0.01" min="0.01" required>
+          <label>Monto Total</label>
+          <input type="number" name="monto_total" id="editMonto" step="0.01" min="0" placeholder="0.00">
         </div>
         <div class="edit-field">
-          <label>ITBMS <span id="itbmsStatusInline"></span></label>
-          <input type="number" name="itbms" id="editItbms" step="0.01" min="0">
+          <label>ITBMS (7%)</label>
+          <input type="number" name="itbms" id="editItbms" step="0.01" min="0" placeholder="0.00">
+          <div id="itbmsStatus" class="edit-nota" style="margin-top:0.35rem;"></div>
         </div>
         <div class="edit-field">
           <label>Subtotal</label>
-          <input type="number" name="subtotal" id="editSubtotal" step="0.01" min="0">
+          <input type="number" name="subtotal" id="editSubtotal" step="0.01" min="0" placeholder="0.00">
         </div>
         <div class="edit-field">
           <label>Moneda</label>
           <select name="moneda" id="editMoneda">
-            <option value="USD">USD</option><option value="PAB">PAB</option>
-            <option value="EUR">EUR</option><option value="COP">COP</option>
+            <option value="USD">USD — Dólar</option>
+            <option value="PAB">PAB — Balboa</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="COP">COP — Peso colombiano</option>
           </select>
         </div>
         <div class="edit-field">
           <label>Categoría</label>
           <select name="categoria" id="editCategoria">
-            <option>Servicios</option><option>Materiales y Suministros</option>
-            <option>Transporte y Logistica</option><option>Tecnologia y Software</option>
-            <option>Nomina y RRHH</option><option>Alquiler e Inmuebles</option>
-            <option>Publicidad y Marketing</option><option>Impuestos y Tasas</option>
-            <option>Alimentacion</option><option>Otros</option>
+            <option value="Servicios">Servicios</option>
+            <option value="Materiales y Suministros">Materiales y Suministros</option>
+            <option value="Transporte y Logistica">Transporte y Logística</option>
+            <option value="Tecnologia y Software">Tecnología y Software</option>
+            <option value="Nomina y RRHH">Nómina y RRHH</option>
+            <option value="Alquiler e Inmuebles">Alquiler e Inmuebles</option>
+            <option value="Publicidad y Marketing">Publicidad y Marketing</option>
+            <option value="Impuestos y Tasas">Impuestos y Tasas</option>
+            <option value="Alimentacion">Alimentación</option>
+            <option value="Otros">Otros</option>
           </select>
         </div>
         <div class="edit-field full">
           <label>Descripción</label>
-          <input type="text" name="descripcion" id="editDescripcion" maxlength="300">
+          <input type="text" name="descripcion" id="editDescripcion" placeholder="Breve descripción del gasto" maxlength="300">
         </div>
       </div>
+      <div style="background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);border-radius:10px;padding:0.65rem 1rem;font-size:0.78rem;color:var(--muted);margin-bottom:1.25rem;">
+        💡 Al corregir, la confianza se ajusta a <strong style="color:var(--accent2)">100%</strong> — indica que un humano verificó los datos.
+      </div>
       <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
-        <button type="button" class="btn-cancel btn-cerrar-edit">Cancelar</button>
-        <button type="submit" class="btn-guardar-edit">💾 Guardar Cambios</button>
+        <button type="button" class="btn-cancel btn-cerrar-edicion">Cancelar</button>
+        <button type="submit" class="btn-guardar-edit">Guardar corrección</button>
       </div>
     </form>
   </div>
 </div>
  
-<!-- DATA PARA JS -->
+<script nonce="{{ csp_nonce() }}">
+  const input = document.getElementById('fileInput');
+  const fileList = document.getElementById('fileList');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const dropZone = document.getElementById('dropZone');
+
+  input.addEventListener('change', () => showFiles(input.files));
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    input.files = e.dataTransfer.files;
+    showFiles(e.dataTransfer.files);
+  });
+
+  function showFiles(files) {
+    fileList.innerHTML = '';
+    if (files.length === 0) { uploadBtn.style.display = 'none'; return; }
+    Array.from(files).forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'file-item';
+      const isXML = f.name.toLowerCase().endsWith('.xml');
+      const isImg = /\.(jpg|jpeg|png|webp)$/i.test(f.name);
+      el.innerHTML = (isXML ? '🧾 ' : isImg ? '📷 ' : '📄 ') + f.name + ' <span style="margin-left:auto;opacity:0.6;">' + (f.size / 1024).toFixed(1) + ' KB</span>';
+      fileList.appendChild(el);
+    });
+    uploadBtn.style.display = 'block';
+  }
+
+  // ── Event delegation — reemplaza todos los onclick inline ──
+  document.addEventListener('click', function(e) {
+    const gBtn = e.target.closest('.btn-gestionar');
+    if (gBtn) { abrirModal(parseInt(gBtn.dataset.idx), gBtn.dataset.proveedor, gBtn.dataset.estado); return; }
+    const eBtn = e.target.closest('.btn-editar');
+    if (eBtn) { abrirEdicion(parseInt(eBtn.dataset.idx)); return; }
+    if (e.target.closest('.btn-cerrar-modal'))   { document.getElementById('modalOverlay').classList.remove('open'); return; }
+    if (e.target.closest('.btn-cerrar-edicion')) { document.getElementById('editOverlay').classList.remove('open'); return; }
+    if (e.target.id === 'modalOverlay') { document.getElementById('modalOverlay').classList.remove('open'); }
+    if (e.target.id === 'editOverlay')  { document.getElementById('editOverlay').classList.remove('open'); }
+    if (e.target.id === 'btnResetFiltros') { resetFiltros(); }
+  });
+
+  // ── Modal de aprobación ──────────────────────────────────
+  const facturaIds = {{ facturas | map(attribute='id') | list | tojson if facturas else '[]' }};
+
+  function abrirModal(idx, proveedor, estadoActual) {
+    const realId = facturaIds[idx - 1];
+    document.getElementById('modalFacturaId').value = realId;
+    document.getElementById('modalTitle').textContent = 'Gestionar Factura';
+    document.getElementById('modalSub').textContent = proveedor;
+    document.getElementById('modalComentario').value = '';
+    document.querySelectorAll('.estado-opcion input').forEach(r => { r.checked = (r.value === estadoActual); });
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function cerrarModal(e) {
+    if (!e || e.target === document.getElementById('modalOverlay') || e.target.classList.contains('modal-close') || e.currentTarget.tagName === 'BUTTON') {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      document.getElementById('modalOverlay').classList.remove('open');
+      document.getElementById('editOverlay').classList.remove('open');
+    }
+  });
+
+  // ── Modal de edición de campos ───────────────────────────
+  function abrirEdicion(idx) {
+    const factura = facturas[idx - 1];
+    const realId  = facturaIds[idx - 1];
+    document.getElementById('editFacturaId').value = realId;
+    document.getElementById('editSub').textContent = factura.Archivo || 'Factura';
+    document.getElementById('editProveedor').value   = factura.Proveedor  || '';
+    document.getElementById('editRuc').value         = factura.RUC        || '';
+    document.getElementById('editFecha').value       = factura.Fecha      || '';
+    document.getElementById('editMonto').value       = factura.Monto_Total != null ? factura.Monto_Total : '';
+    document.getElementById('editItbms').value       = factura.ITBMS      != null ? factura.ITBMS      : '';
+    document.getElementById('editSubtotal').value    = factura.Subtotal   != null ? factura.Subtotal   : '';
+    document.getElementById('editDescripcion').value = factura.Descripcion || '';
+    const monedaEl = document.getElementById('editMoneda');
+    for (let opt of monedaEl.options) opt.selected = (opt.value === (factura.Moneda || 'USD'));
+    const catEl = document.getElementById('editCategoria');
+    for (let opt of catEl.options) opt.selected = (opt.value === (factura.Categoria || 'Otros'));
+    document.getElementById('editOverlay').classList.add('open');
+  }
+
+  function cerrarEdicion(e) {
+    if (!e || e.target === document.getElementById('editOverlay') || e.target.classList.contains('modal-close') || e.currentTarget.tagName === 'BUTTON') {
+      document.getElementById('editOverlay').classList.remove('open');
+    }
+  }
+
+  // ── FILTROS DE TABLA ─────────────────────────────────────
+  const searchInput    = document.getElementById('searchInput');
+  const filterEstado   = document.getElementById('filterEstado');
+  const filterCategoria= document.getElementById('filterCategoria');
+  const filterCountEl  = document.getElementById('filterCount');
+
+  function aplicarFiltros() {
+    const q      = (searchInput   ? searchInput.value.toLowerCase().trim()   : '');
+    const estado = (filterEstado  ? filterEstado.value.toLowerCase()         : '');
+    const cat    = (filterCategoria ? filterCategoria.value.toLowerCase()    : '');
+    const rows   = document.querySelectorAll('.factura-row');
+    let visible  = 0;
+    rows.forEach(row => {
+      const prov  = row.dataset.proveedor || '';
+      const ruc   = row.dataset.ruc       || '';
+      const arch  = row.dataset.archivo   || '';
+      const est   = row.dataset.estado    || '';
+      const catR  = row.dataset.categoria || '';
+      const matchQ   = !q      || prov.includes(q) || ruc.includes(q) || arch.includes(q);
+      const matchEst = !estado || est === estado;
+      const matchCat = !cat    || catR.includes(cat.toLowerCase());
+      if (matchQ && matchEst && matchCat) { row.classList.remove('hidden-row'); visible++; }
+      else                                { row.classList.add('hidden-row'); }
+    });
+    if (filterCountEl) {
+      filterCountEl.textContent = visible === rows.length
+        ? rows.length + ' facturas'
+        : visible + ' de ' + rows.length + ' facturas';
+    }
+  }
+
+  function resetFiltros() {
+    if (searchInput)     searchInput.value = '';
+    if (filterEstado)    filterEstado.value = '';
+    if (filterCategoria) filterCategoria.value = '';
+    aplicarFiltros();
+  }
+
+  if (searchInput)     searchInput.addEventListener('input',  aplicarFiltros);
+  if (filterEstado)    filterEstado.addEventListener('change', aplicarFiltros);
+  if (filterCategoria) filterCategoria.addEventListener('change', aplicarFiltros);
+
+  // Inicializar contador
+  window.addEventListener('DOMContentLoaded', aplicarFiltros);
+  setTimeout(aplicarFiltros, 100);
+
+  // ══════════════════════════════════════════════════════════════
+  // VALIDACIÓN RUC EN DGI
+  // ══════════════════════════════════════════════════════════════
+  const btnValidarRuc = document.getElementById('btnValidarRuc');
+  const rucInput      = document.getElementById('editRuc');
+  const rucStatus     = document.getElementById('rucStatus');
+
+  if (btnValidarRuc) {
+    btnValidarRuc.addEventListener('click', function () {
+      const ruc = rucInput.value.trim();
+      if (!ruc) { rucStatus.innerHTML = '<span style="color:var(--error)">Ingresa un RUC primero.</span>'; return; }
+      btnValidarRuc.disabled = true;
+      btnValidarRuc.textContent = '⏳';
+      rucStatus.innerHTML = '<span style="color:var(--muted)">Consultando portal DGI...</span>';
+
+      fetch('/api/validar-ruc?ruc=' + encodeURIComponent(ruc))
+        .then(r => r.json())
+        .then(data => {
+          btnValidarRuc.disabled = false;
+          btnValidarRuc.textContent = '🔍 DGI';
+          if (data.fuente === 'error') {
+            rucStatus.innerHTML = '<span style="color:var(--accent3)">⚠ No se pudo conectar al portal DGI: ' + (data.error || '') + '</span>';
+          } else if (data.ok === true) {
+            const desde = data.fuente === 'cache' ? ' (caché)' : '';
+            const nombre = data.nombre ? ' — <strong style="color:var(--text)">' + data.nombre + '</strong>' : '';
+            rucStatus.innerHTML = '<span style="color:var(--success)">✓ RUC válido' + desde + nombre + '</span>';
+            // Si la DGI devolvió un nombre y el proveedor está vacío, sugerirlo
+            if (data.nombre && !document.getElementById('editProveedor').value.trim()) {
+              document.getElementById('editProveedor').value = data.nombre;
+            }
+          } else {
+            rucStatus.innerHTML = '<span style="color:var(--error)">✗ RUC no encontrado en DGI. Verifica el número.</span>';
+          }
+        })
+        .catch(() => {
+          btnValidarRuc.disabled = false;
+          btnValidarRuc.textContent = '🔍 DGI';
+          rucStatus.innerHTML = '<span style="color:var(--error)">Error de red al consultar DGI.</span>';
+        });
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // VERIFICACIÓN DE ITBMS EN TIEMPO REAL
+  // Se dispara al cambiar subtotal, itbms o descripción
+  // ══════════════════════════════════════════════════════════════
+  const itbmsInput    = document.getElementById('editItbms');
+  const subtotalInput = document.getElementById('editSubtotal');
+  const montoInput    = document.getElementById('editMonto');
+  const descInput     = document.getElementById('editDescripcion');
+  const itbmsStatus   = document.getElementById('itbmsStatus');
+
+  let _itbmsDebounce = null;
+  function verificarItbms() {
+    clearTimeout(_itbmsDebounce);
+    _itbmsDebounce = setTimeout(function () {
+      const subtotal    = parseFloat(subtotalInput.value) || 0;
+      const itbms       = parseFloat(itbmsInput.value)    || 0;
+      const montoTotal  = parseFloat(montoInput.value)    || 0;
+      const descripcion = descInput.value || '';
+      if (itbms === 0 && subtotal === 0) { itbmsStatus.innerHTML = ''; return; }
+
+      const params = new URLSearchParams({ subtotal, itbms, monto_total: montoTotal, descripcion });
+      fetch('/api/verificar-itbms?' + params)
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            itbmsStatus.innerHTML = '<span style="color:var(--success)">✓ ' + data.mensaje + '</span>';
+          } else {
+            itbmsStatus.innerHTML = '<span style="color:var(--accent3)">⚠ ' + data.mensaje + '</span>';
+          }
+        })
+        .catch(() => { itbmsStatus.innerHTML = ''; });
+    }, 600);  // debounce 600 ms
+  }
+
+  if (itbmsInput)    itbmsInput.addEventListener('input',    verificarItbms);
+  if (subtotalInput) subtotalInput.addEventListener('input',  verificarItbms);
+  if (descInput)     descInput.addEventListener('input',      verificarItbms);
+
+  const banner  = document.getElementById('processingBanner');
+  const bannerMsg = document.getElementById('processingMsg');
+  let pollTimer = null;
+
+  function checkJobStatus() {
+    fetch('/upload/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'processing') {
+          banner.className = 'flash warning';
+          banner.style.display = 'block';
+          bannerMsg.innerHTML = '⏳ <strong>Procesando facturas...</strong> La IA está extrayendo los datos. La tabla se actualizará automáticamente.';
+          if (!pollTimer) pollTimer = setInterval(checkJobStatus, 3000);
+        } else if (data.status === 'done') {
+          clearInterval(pollTimer); pollTimer = null;
+          banner.className = 'flash success';
+          banner.style.display = 'block';
+          bannerMsg.innerHTML = '✓ <strong>' + data.msg + '</strong> — <a href="/dashboard" style="color:inherit;text-decoration:underline;">Actualizar tabla</a>';
+        } else if (data.status === 'error') {
+          clearInterval(pollTimer); pollTimer = null;
+          banner.className = 'flash danger';
+          banner.style.display = 'block';
+          bannerMsg.innerHTML = '✗ Error procesando: ' + data.msg;
+        } else {
+          banner.style.display = 'none';
+        }
+      })
+      .catch(() => {});
+  }
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}{% if 'segundo plano' in msg %}
+  setTimeout(checkJobStatus, 1500);
+    {% endif %}{% endfor %}
+  {% endwith %}
+  checkJobStatus();
+</script>
 {% if facturas %}
 <script nonce="{{ csp_nonce() }}">
 const facturas = {{ facturas | tojson }};
+const COLORS = ['#00E5C3','#3B82F6','#F59E0B','#A78BFA','#F87171','#34D399','#60A5FA','#FBBF24'];
+const gridColor = 'rgba(255,255,255,0.05)';
+Chart.defaults.color = '#7A8FAD';
+Chart.defaults.borderColor = gridColor;
+Chart.defaults.font.family = '"DM Sans", sans-serif';
+ 
+// 1. Gasto por proveedor
+const gastoMap = {};
+facturas.forEach(f => { const p = f.Proveedor || 'Desconocido'; gastoMap[p] = (gastoMap[p]||0) + (f.Monto_Total||0); });
+const gastoSorted = Object.entries(gastoMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
+new Chart(document.getElementById('chartProveedores'), {
+  type:'bar',
+  data:{ labels: gastoSorted.map(e=>e[0].length>18?e[0].substring(0,18)+'...':e[0]), datasets:[{ data:gastoSorted.map(e=>e[1]), backgroundColor:COLORS, borderRadius:8, borderSkipped:false }] },
+  options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:gridColor}, ticks:{callback:v=>'$'+v.toLocaleString()}}, y:{grid:{display:false}} } }
+});
+ 
+// 2. Distribucion por moneda
+const monedaMap = {};
+facturas.forEach(f => { const m = f.Moneda||'N/A'; monedaMap[m]=(monedaMap[m]||0)+1; });
+new Chart(document.getElementById('chartMoneda'), {
+  type:'doughnut',
+  data:{ labels:Object.keys(monedaMap), datasets:[{ data:Object.values(monedaMap), backgroundColor:COLORS, borderWidth:2, borderColor:'#0d1117', hoverOffset:8 }] },
+  options:{ responsive:true, maintainAspectRatio:false, cutout:'65%', plugins:{legend:{position:'right', labels:{padding:14, usePointStyle:true}}} }
+});
+ 
+// 3. Evolucion acumulada
+let acum = 0;
+const sorted = [...facturas].sort((a,b)=>new Date(a.Fecha_Procesado||0)-new Date(b.Fecha_Procesado||0));
+const tendLabels = sorted.map((f,i)=>f.Archivo?(f.Archivo.replace(/\.[^.]+$/,'').substring(0,12)):'F'+(i+1));
+const tendData = sorted.map(f=>{ acum+=(f.Monto_Total||0); return acum; });
+new Chart(document.getElementById('chartTendencia'), {
+  type:'line',
+  data:{ labels:tendLabels, datasets:[{ label:'Acumulado', data:tendData, borderColor:'#00E5C3', backgroundColor:'rgba(0,229,195,0.08)', fill:true, tension:0.4, pointBackgroundColor:'#00E5C3', pointRadius:4, pointHoverRadius:7 }] },
+  options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}, ticks:{maxRotation:30}}, y:{grid:{color:gridColor}, ticks:{callback:v=>'$'+v.toLocaleString()}} } }
+});
+ 
+// 4. Confianza por rangos
+const confRanges = {'Alta 90-100%':0,'Buena 75-89%':0,'Media 60-74%':0,'Baja <60%':0};
+facturas.forEach(f=>{ const c=f.Confianza||0; if(c>=90)confRanges['Alta 90-100%']++; else if(c>=75)confRanges['Buena 75-89%']++; else if(c>=60)confRanges['Media 60-74%']++; else confRanges['Baja <60%']++; });
+new Chart(document.getElementById('chartConfianza'), {
+  type:'bar',
+  data:{ labels:Object.keys(confRanges), datasets:[{ data:Object.values(confRanges), backgroundColor:['#00E5C3','#3B82F6','#F59E0B','#F87171'], borderRadius:8, borderSkipped:false }] },
+  options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}}, y:{grid:{color:gridColor}, ticks:{stepSize:1}} } }
+});
+ 
+// 5. Cantidad por proveedor
+const cantMap = {};
+facturas.forEach(f=>{ const p=f.Proveedor||'Desconocido'; cantMap[p]=(cantMap[p]||0)+1; });
+const cantSorted = Object.entries(cantMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+new Chart(document.getElementById('chartCantidad'), {
+  type:'doughnut',
+  data:{ labels:cantSorted.map(e=>e[0].length>16?e[0].substring(0,16)+'...':e[0]), datasets:[{ data:cantSorted.map(e=>e[1]), backgroundColor:COLORS, borderWidth:2, borderColor:'#0d1117', hoverOffset:8 }] },
+  options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{position:'right', labels:{padding:14, usePointStyle:true}}} }
+});
 </script>
-{% else %}
-<script nonce="{{ csp_nonce() }}">const facturas = [];</script>
 {% endif %}
-{% if ventas %}
-<script nonce="{{ csp_nonce() }}">
-const ventas = {{ ventas | tojson }};
-</script>
-{% else %}
-<script nonce="{{ csp_nonce() }}">const ventas = [];</script>
-{% endif %}
- 
-<!-- FACTURAS DATA para edición (tabla compras) -->
-{% if facturas %}
-<script nonce="{{ csp_nonce() }}">
-const facturaData = {{ facturas | tojson }};
-</script>
-{% else %}
-<script nonce="{{ csp_nonce() }}">const facturaData = [];</script>
-{% endif %}
- 
-<script nonce="{{ csp_nonce() }}">
-// ─── PALETA ────────────────────────────────────────────────
-const COLORS  = ['#00E5C3','#3B82F6','#F59E0B','#A78BFA','#F87171','#34D399','#60A5FA','#FBBF24','#FB7185','#4ADE80'];
-const gridC   = 'rgba(255,255,255,0.05)';
-Chart.defaults.color        = '#7A8FAD';
-Chart.defaults.borderColor  = gridC;
-Chart.defaults.font.family  = '"DM Sans", sans-serif';
- 
-// ─── TABS ──────────────────────────────────────────────────
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-  });
-});
- 
-// ─── UPLOAD DRAG & DROP ────────────────────────────────────
-function setupDropZone(zoneId, inputId, listId, btnId, hiddenInputId, formId, isVenta) {
-  const zone       = document.getElementById(zoneId);
-  const input      = document.getElementById(inputId);
-  const list       = document.getElementById(listId);
-  const btn        = document.getElementById(btnId);
-  const hiddenInp  = document.getElementById(hiddenInputId);
-  const form       = document.getElementById(formId);
-  if (!zone) return;
- 
-  let selectedFiles = [];
- 
-  function renderList() {
-    list.innerHTML = '';
-    selectedFiles.forEach(f => {
-      const el = document.createElement('div');
-      el.className = 'file-item' + (isVenta ? ' venta' : '');
-      el.innerHTML = (isVenta ? '📤 ' : '📄 ') + f.name;
-      list.appendChild(el);
-    });
-    btn.style.display = selectedFiles.length ? 'block' : 'none';
-  }
- 
-  input.addEventListener('change', () => { selectedFiles = Array.from(input.files); renderList(); });
-  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    selectedFiles = Array.from(e.dataTransfer.files);
-    renderList();
-  });
- 
-  form.addEventListener('submit', () => {
-    const dt = new DataTransfer();
-    selectedFiles.forEach(f => dt.items.add(f));
-    hiddenInp.files = dt.files;
-  });
-}
- 
-setupDropZone('dropZoneCompras','fileInputCompras','fileListCompras','uploadBtnCompras','hiddenFilesCompras','uploadFormCompras', false);
-setupDropZone('dropZoneVentas', 'fileInputVentas', 'fileListVentas', 'uploadBtnVentas', 'hiddenFilesVentas', 'uploadFormVentas', true);
- 
-// ─── JOB POLLING ──────────────────────────────────────────
-const banner    = document.getElementById('processingBanner');
-const bannerMsg = document.getElementById('processingMsg');
-let pollTimer   = null;
-function checkJobStatus() {
-  fetch('/upload/status').then(r => r.json()).then(data => {
-    if (data.status === 'processing') {
-      banner.className = 'flash warning'; banner.style.display = 'block';
-      bannerMsg.innerHTML = '⏳ <strong>Procesando facturas...</strong> La IA está extrayendo los datos.';
-      if (!pollTimer) pollTimer = setInterval(checkJobStatus, 3000);
-    } else if (data.status === 'done') {
-      clearInterval(pollTimer); pollTimer = null;
-      banner.className = 'flash success'; banner.style.display = 'block';
-      bannerMsg.innerHTML = '✓ <strong>' + data.msg + '</strong> — <a href="/dashboard" style="color:inherit;text-decoration:underline;">Actualizar</a>';
-    } else if (data.status === 'error') {
-      clearInterval(pollTimer); pollTimer = null;
-      banner.className = 'flash danger'; banner.style.display = 'block';
-      bannerMsg.innerHTML = '✗ Error: ' + data.msg;
-    } else { banner.style.display = 'none'; }
-  }).catch(() => {});
-}
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for cat, msg in messages %}{% if 'segundo plano' in msg %}
-setTimeout(checkJobStatus, 1500);
-  {% endif %}{% endfor %}
-{% endwith %}
-checkJobStatus();
- 
-// ─── MODAL COMPRAS ─────────────────────────────────────────
-const modalOverlay = document.getElementById('modalOverlay');
-document.querySelectorAll('.btn-gestionar').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const idx    = parseInt(btn.dataset.idx) - 1;
-    const f      = facturaData[idx];
-    document.getElementById('modalFacturaId').value = f.id;
-    document.getElementById('modalTitle').textContent = 'Gestionar: ' + (f.Proveedor || 'Factura');
-    document.getElementById('modalSub').textContent   = 'Estado actual: ' + (f.Estado || 'pendiente');
-    const radios = modalOverlay.querySelectorAll('input[type=radio]');
-    radios.forEach(r => { r.checked = r.value === (f.Estado || 'pendiente'); });
-    modalOverlay.classList.add('open');
-  });
-});
-document.querySelectorAll('.btn-cerrar-modal').forEach(b => b.addEventListener('click', () => modalOverlay.classList.remove('open')));
-modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('open'); });
- 
-// ─── MODAL VENTAS ──────────────────────────────────────────
-const modalVOverlay = document.getElementById('modalVentasOverlay');
-document.querySelectorAll('.btn-gestionar-v').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('modalVFacturaId').value = btn.dataset.id;
-    document.getElementById('modalVTitle').textContent = 'Gestionar: ' + (btn.dataset.proveedor || 'Venta');
-    document.getElementById('modalVSub').textContent   = 'Estado: ' + (btn.dataset.estado || 'pendiente');
-    const radios = modalVOverlay.querySelectorAll('input[type=radio]');
-    radios.forEach(r => { r.checked = r.value === (btn.dataset.estado || 'pendiente'); });
-    modalVOverlay.classList.add('open');
-  });
-});
-document.querySelectorAll('.btn-cerrar-modal-v').forEach(b => b.addEventListener('click', () => modalVOverlay.classList.remove('open')));
-modalVOverlay.addEventListener('click', e => { if (e.target === modalVOverlay) modalVOverlay.classList.remove('open'); });
- 
-// ─── MODAL EDICIÓN ─────────────────────────────────────────
-const editOverlay = document.getElementById('editOverlay');
-let itbmsDebounce = null;
-document.querySelectorAll('.btn-editar').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const idx = parseInt(btn.dataset.idx) - 1;
-    const f   = facturaData[idx];
-    document.getElementById('editFacturaId').value  = f.id;
-    document.getElementById('editProveedor').value  = f.Proveedor || '';
-    document.getElementById('editRuc').value        = f.RUC || '';
-    const fechaRaw = f.Fecha || '';
-    if (fechaRaw.match(/^\d{4}-\d{2}-\d{2}$/)) document.getElementById('editFecha').value = fechaRaw;
-    else if (fechaRaw.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-      const [d,m,y] = fechaRaw.split('/');
-      document.getElementById('editFecha').value = y+'-'+m+'-'+d;
-    }
-    document.getElementById('editMonto').value      = f.Monto_Total || '';
-    document.getElementById('editItbms').value      = f.ITBMS || '';
-    document.getElementById('editSubtotal').value   = f.Subtotal || '';
-    document.getElementById('editMoneda').value     = f.Moneda || 'USD';
-    document.getElementById('editCategoria').value  = f.Categoria || 'Otros';
-    document.getElementById('editDescripcion').value= f.Descripcion || '';
-    document.getElementById('editSub').textContent  = 'Archivo: ' + (f.Archivo || '');
-    editOverlay.classList.add('open');
-  });
-});
-document.querySelectorAll('.btn-cerrar-edit').forEach(b => b.addEventListener('click', () => editOverlay.classList.remove('open')));
-editOverlay.addEventListener('click', e => { if (e.target === editOverlay) editOverlay.classList.remove('open'); });
- 
-// Validación ITBMS en tiempo real
-const itbmsInput    = document.getElementById('editItbms');
-const subtotalInput = document.getElementById('editSubtotal');
-const descInput     = document.getElementById('editDescripcion');
-const montoInput    = document.getElementById('editMonto');
-const itbmsStatus   = document.getElementById('itbmsStatusInline');
-function verificarItbms() {
-  clearTimeout(itbmsDebounce);
-  itbmsDebounce = setTimeout(() => {
-    const subtotal   = parseFloat(subtotalInput.value) || 0;
-    const itbms      = parseFloat(itbmsInput.value)    || 0;
-    const montoTotal = parseFloat(montoInput.value)    || 0;
-    const descripcion = descInput.value;
-    if (!subtotal && !itbms) { itbmsStatus.innerHTML = ''; return; }
-    const params = new URLSearchParams({ subtotal, itbms, monto_total: montoTotal, descripcion });
-    fetch('/api/verificar-itbms?' + params).then(r => r.json()).then(data => {
-      itbmsStatus.innerHTML = data.ok
-        ? '<span style="color:var(--success)">✓</span>'
-        : '<span style="color:var(--accent3)" title="' + data.mensaje + '">⚠</span>';
-    }).catch(() => { itbmsStatus.innerHTML = ''; });
-  }, 600);
-}
-if (itbmsInput)    itbmsInput.addEventListener('input',   verificarItbms);
-if (subtotalInput) subtotalInput.addEventListener('input', verificarItbms);
-if (descInput)     descInput.addEventListener('input',    verificarItbms);
- 
-// Validación RUC en tiempo real
-const rucInput  = document.getElementById('editRuc');
-const rucStatus = document.getElementById('rucStatus');
-let rucTimer    = null;
-if (rucInput) {
-  rucInput.addEventListener('input', () => {
-    clearTimeout(rucTimer);
-    const ruc = rucInput.value.trim();
-    if (ruc.length < 4) { rucStatus.innerHTML = ''; return; }
-    rucTimer = setTimeout(() => {
-      fetch('/api/validar-ruc?ruc=' + encodeURIComponent(ruc))
-        .then(r => r.json()).then(d => {
-          rucStatus.innerHTML = d.ok
-            ? '<span style="color:var(--success)">✓ ' + (d.nombre || 'RUC válido') + '</span>'
-            : '<span style="color:var(--accent3)">⚠ No encontrado en DGI</span>';
-        }).catch(() => { rucStatus.innerHTML = ''; });
-    }, 800);
-  });
-}
- 
-// ─── FILTROS COMPRAS ───────────────────────────────────────
-function setupFilters(searchId, estadoId, catId, resetId, countId, rowClass) {
-  const searchEl = document.getElementById(searchId);
-  const estadoEl = document.getElementById(estadoId);
-  const catEl    = catId ? document.getElementById(catId) : null;
-  const resetEl  = document.getElementById(resetId);
-  const countEl  = document.getElementById(countId);
-  if (!searchEl) return;
-  function applyFilters() {
-    const q   = searchEl.value.toLowerCase();
-    const est = estadoEl ? estadoEl.value : '';
-    const cat = catEl ? catEl.value.toLowerCase() : '';
-    const rows = document.querySelectorAll('.' + rowClass);
-    let vis = 0;
-    rows.forEach(row => {
-      const matchQ   = !q   || ['data-proveedor','data-ruc','data-archivo'].some(a => (row.getAttribute(a)||'').includes(q));
-      const matchEst = !est || row.getAttribute('data-estado') === est;
-      const matchCat = !cat || (row.getAttribute('data-categoria')||'').includes(cat);
-      const show = matchQ && matchEst && matchCat;
-      row.classList.toggle('hidden-row', !show);
-      if (show) vis++;
-    });
-    if (countEl) countEl.textContent = vis + ' de ' + rows.length + ' facturas';
-  }
-  searchEl.addEventListener('input', applyFilters);
-  if (estadoEl) estadoEl.addEventListener('change', applyFilters);
-  if (catEl)    catEl.addEventListener('change', applyFilters);
-  if (resetEl)  resetEl.addEventListener('click', () => {
-    searchEl.value = ''; if (estadoEl) estadoEl.value = ''; if (catEl) catEl.value = '';
-    applyFilters();
-  });
-  applyFilters();
-}
-setupFilters('searchInputC','filterEstadoC','filterCategoriaC','btnResetC','filterCountC','factura-row');
-setupFilters('searchInputV','filterEstadoV',null,'btnResetV','filterCountV','venta-row');
- 
-// ─── GRÁFICAS COMPRAS ──────────────────────────────────────
-if (facturas.length) {
-  // 1. Top proveedores
-  const gastoMap = {};
-  facturas.forEach(f => { const p = f.Proveedor||'Desconocido'; gastoMap[p]=(gastoMap[p]||0)+(f.Monto_Total||0); });
-  const gastoSorted = Object.entries(gastoMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
-  new Chart(document.getElementById('chartProveedores'), {
-    type:'bar',
-    data:{ labels:gastoSorted.map(e=>e[0].length>18?e[0].substring(0,18)+'…':e[0]),
-           datasets:[{data:gastoSorted.map(e=>e[1]),backgroundColor:COLORS,borderRadius:8,borderSkipped:false}] },
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{ x:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}}, y:{grid:{display:false}} } }
-  });
-  // 2. Moneda
-  const monedaMap = {};
-  facturas.forEach(f=>{ const m=f.Moneda||'N/A'; monedaMap[m]=(monedaMap[m]||0)+1; });
-  new Chart(document.getElementById('chartMoneda'), {
-    type:'doughnut',
-    data:{ labels:Object.keys(monedaMap), datasets:[{data:Object.values(monedaMap),backgroundColor:COLORS,borderWidth:2,borderColor:'#0d1117',hoverOffset:8}] },
-    options:{ responsive:true, maintainAspectRatio:false, cutout:'65%', plugins:{legend:{position:'right',labels:{padding:14,usePointStyle:true}}} }
-  });
-  // 3. Tendencia acumulada
-  let acum=0;
-  const sorted=[...facturas].sort((a,b)=>new Date(a.Fecha_Procesado||0)-new Date(b.Fecha_Procesado||0));
-  const tendLabels=sorted.map((f,i)=>f.Archivo?(f.Archivo.replace(/\.[^.]+$/,'').substring(0,12)):'F'+(i+1));
-  const tendData=sorted.map(f=>{ acum+=(f.Monto_Total||0); return acum; });
-  new Chart(document.getElementById('chartTendencia'), {
-    type:'line',
-    data:{ labels:tendLabels, datasets:[{label:'Acumulado',data:tendData,borderColor:'#00E5C3',backgroundColor:'rgba(0,229,195,0.08)',fill:true,tension:0.4,pointBackgroundColor:'#00E5C3',pointRadius:3,pointHoverRadius:6}] },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}},
-      scales:{ x:{grid:{display:false},ticks:{maxRotation:30}}, y:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}} } }
-  });
-  // 4. Confianza
-  const confR={'Alta 90-100%':0,'Buena 75-89%':0,'Media 60-74%':0,'Baja <60%':0};
-  facturas.forEach(f=>{ const c=f.Confianza||0; if(c>=90)confR['Alta 90-100%']++; else if(c>=75)confR['Buena 75-89%']++; else if(c>=60)confR['Media 60-74%']++; else confR['Baja <60%']++; });
-  new Chart(document.getElementById('chartConfianza'), {
-    type:'bar',
-    data:{ labels:Object.keys(confR), datasets:[{data:Object.values(confR),backgroundColor:['#00E5C3','#3B82F6','#F59E0B','#F87171'],borderRadius:8,borderSkipped:false}] },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false}}, y:{grid:{color:gridC},ticks:{stepSize:1}} } }
-  });
-  // 5. Cantidad por proveedor
-  const cantMap = {};
-  facturas.forEach(f=>{ const p=f.Proveedor||'Desconocido'; cantMap[p]=(cantMap[p]||0)+1; });
-  const cantSorted=Object.entries(cantMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  new Chart(document.getElementById('chartCantidad'), {
-    type:'doughnut',
-    data:{ labels:cantSorted.map(e=>e[0].length>16?e[0].substring(0,16)+'…':e[0]), datasets:[{data:cantSorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:2,borderColor:'#0d1117',hoverOffset:8}] },
-    options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{position:'right',labels:{padding:14,usePointStyle:true}}} }
-  });
-}
- 
-// ─── GRÁFICAS ANÁLISIS POR CATEGORÍA ──────────────────────
-if (facturas.length) {
-  // Agrupar por categoría
-  const catMap = {};
-  facturas.forEach(f => {
-    const cat = f.Categoria || 'Otros';
-    catMap[cat] = (catMap[cat] || 0) + (f.Monto_Total || 0);
-  });
-  const catSorted = Object.entries(catMap).sort((a,b) => b[1]-a[1]);
-  const totalMonto = catSorted.reduce((s,[,v]) => s+v, 0);
- 
-  // Donut
-  if (document.getElementById('chartCatDonut')) {
-    new Chart(document.getElementById('chartCatDonut'), {
-      type:'doughnut',
-      data:{ labels:catSorted.map(e=>e[0]), datasets:[{data:catSorted.map(e=>e[1]),backgroundColor:COLORS,borderWidth:3,borderColor:'#0d1117',hoverOffset:12}] },
-      options:{ responsive:true, maintainAspectRatio:false, cutout:'60%',
-        plugins:{ legend:{position:'bottom',labels:{padding:12,usePointStyle:true,font:{size:11}}},
-          tooltip:{callbacks:{label:ctx=>ctx.label+': B/.'+ctx.parsed.toLocaleString('es-PA',{minimumFractionDigits:2})}} } }
-    });
-  }
- 
-  // Breakdown list
-  const breakdownEl = document.getElementById('catBreakdownList');
-  if (breakdownEl) {
-    catSorted.forEach(([cat, monto], i) => {
-      const pct = totalMonto > 0 ? (monto/totalMonto*100).toFixed(1) : '0.0';
-      const row = document.createElement('div');
-      row.className = 'cat-row';
-      row.innerHTML = `
-        <span class="cat-dot" style="background:${COLORS[i%COLORS.length]}"></span>
-        <span class="cat-name">${cat}</span>
-        <div class="cat-bar-wrap"><div class="cat-bar-fill" style="width:${pct}%;background:${COLORS[i%COLORS.length]}"></div></div>
-        <span class="cat-pct">${pct}%</span>
-        <span class="cat-amount">B/.${(monto/1000).toFixed(1)}k</span>`;
-      breakdownEl.appendChild(row);
-    });
-  }
- 
-  // Bar horizontal categorías
-  if (document.getElementById('chartCatBar')) {
-    new Chart(document.getElementById('chartCatBar'), {
-      type:'bar',
-      data:{ labels:catSorted.map(e=>e[0]), datasets:[{data:catSorted.map(e=>e[1]),backgroundColor:COLORS,borderRadius:8,borderSkipped:false}] },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false},
-          tooltip:{callbacks:{label:ctx=>'B/.'+ctx.parsed.x.toLocaleString('es-PA',{minimumFractionDigits:2})}} },
-        scales:{ x:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}}, y:{grid:{display:false}} } }
-    });
-  }
- 
-  // Tendencia mensual por categoría (top 5)
-  if (document.getElementById('chartCatMensual')) {
-    const top5 = catSorted.slice(0,5).map(e=>e[0]);
-    const mesesMap = {};
-    facturas.forEach(f => {
-      const fp = (f.Fecha_Procesado||f.Fecha||'').substring(0,7);
-      if (!fp || fp.length < 7) return;
-      const cat = f.Categoria || 'Otros';
-      if (!top5.includes(cat)) return;
-      if (!mesesMap[fp]) mesesMap[fp] = {};
-      mesesMap[fp][cat] = (mesesMap[fp][cat]||0) + (f.Monto_Total||0);
-    });
-    const meses = Object.keys(mesesMap).sort();
-    const datasets = top5.map((cat,i) => ({
-      label: cat,
-      data: meses.map(m => mesesMap[m]?.[cat] || 0),
-      borderColor: COLORS[i],
-      backgroundColor: COLORS[i]+'22',
-      fill: false,
-      tension: 0.4,
-      pointRadius: 4,
-      pointHoverRadius: 7,
-    }));
-    new Chart(document.getElementById('chartCatMensual'), {
-      type:'line',
-      data:{ labels:meses, datasets },
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{position:'bottom',labels:{padding:12,usePointStyle:true,font:{size:10}}},
-          tooltip:{mode:'index',intersect:false,callbacks:{label:ctx=>'  '+ctx.dataset.label+': B/.'+ctx.parsed.y.toLocaleString('es-PA',{minimumFractionDigits:2})}} },
-        scales:{ x:{grid:{display:false}}, y:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}} } }
-    });
-  }
-}
- 
-// ─── GRÁFICAS VENTAS ───────────────────────────────────────
-if (ventas.length) {
-  const vClientesMap = {};
-  ventas.forEach(f => { const p=f.Proveedor||'Desconocido'; vClientesMap[p]=(vClientesMap[p]||0)+(f.Monto_Total||0); });
-  const vClientesSorted = Object.entries(vClientesMap).sort((a,b)=>b[1]-a[1]).slice(0,7);
-  if (document.getElementById('chartVClientesMonto')) {
-    new Chart(document.getElementById('chartVClientesMonto'), {
-      type:'bar',
-      data:{ labels:vClientesSorted.map(e=>e[0].length>18?e[0].substring(0,18)+'…':e[0]),
-             datasets:[{data:vClientesSorted.map(e=>e[1]),backgroundColor:'#A78BFA',borderRadius:8,borderSkipped:false}] },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{ x:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}}, y:{grid:{display:false}} } }
-    });
-  }
-  const vCatMap = {};
-  ventas.forEach(f=>{ const c=f.Categoria||'Otros'; vCatMap[c]=(vCatMap[c]||0)+(f.Monto_Total||0); });
-  if (document.getElementById('chartVCategorias')) {
-    new Chart(document.getElementById('chartVCategorias'), {
-      type:'doughnut',
-      data:{ labels:Object.keys(vCatMap), datasets:[{data:Object.values(vCatMap),backgroundColor:['#A78BFA','#C084FC','#7C3AED','#DDD6FE','#6D28D9'],borderWidth:2,borderColor:'#0d1117',hoverOffset:8}] },
-      options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins:{legend:{position:'right',labels:{padding:12,usePointStyle:true}}} }
-    });
-  }
-  let vAcum=0;
-  const vSorted=[...ventas].sort((a,b)=>new Date(a.Fecha_Procesado||0)-new Date(b.Fecha_Procesado||0));
-  if (document.getElementById('chartVTendencia')) {
-    new Chart(document.getElementById('chartVTendencia'), {
-      type:'line',
-      data:{ labels:vSorted.map((f,i)=>f.Archivo?(f.Archivo.replace(/\.[^.]+$/,'').substring(0,12)):'V'+(i+1)),
-             datasets:[{label:'Acumulado Ventas',data:vSorted.map(f=>{ vAcum+=(f.Monto_Total||0); return vAcum; }),
-               borderColor:'#A78BFA',backgroundColor:'rgba(167,139,250,0.08)',fill:true,tension:0.4,pointBackgroundColor:'#A78BFA',pointRadius:3}] },
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{ x:{grid:{display:false},ticks:{maxRotation:30}}, y:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}} } }
-    });
-  }
-}
- 
-// ─── CRUCE ITBMS ───────────────────────────────────────────
-(function() {
-  const itbmsC = facturas.filter(f=>f.Estado==='aprobada').reduce((s,f)=>s+(f.ITBMS||0),0);
-  const itbmsV = ventas.filter(f=>f.Estado==='aprobada').reduce((s,f)=>s+(f.ITBMS||0),0);
-  const total  = itbmsC + itbmsV;
-  if (total > 0) {
-    const pctC = (itbmsC/total*100).toFixed(1);
-    const pctV = (itbmsV/total*100).toFixed(1);
-    const bC   = document.getElementById('bbarCompras');
-    const bV   = document.getElementById('bbarVentas');
-    if (bC) { bC.style.width = pctC+'%'; bC.textContent = pctC+'%'; }
-    if (bV) { bV.style.width = pctV+'%'; bV.textContent = pctV+'%'; }
-  }
- 
-  // Cruce mensual
-  if (document.getElementById('chartCruceMensual') && (facturas.length || ventas.length)) {
-    const mesesSet = new Set();
-    [...facturas, ...ventas].forEach(f => {
-      const m = (f.Fecha_Procesado||f.Fecha||'').substring(0,7);
-      if (m.length === 7) mesesSet.add(m);
-    });
-    const meses = [...mesesSet].sort();
-    const dC = meses.map(m => facturas.filter(f=>(f.Fecha_Procesado||f.Fecha||'').startsWith(m)).reduce((s,f)=>s+(f.ITBMS||0),0));
-    const dV = meses.map(m => ventas.filter(f=>(f.Fecha_Procesado||f.Fecha||'').startsWith(m)).reduce((s,f)=>s+(f.ITBMS||0),0));
-    new Chart(document.getElementById('chartCruceMensual'), {
-      type:'bar',
-      data:{ labels:meses, datasets:[
-        {label:'ITBMS Crédito (Compras)',data:dC,backgroundColor:'rgba(0,229,195,0.7)',borderRadius:6},
-        {label:'ITBMS Débito (Ventas)',  data:dV,backgroundColor:'rgba(167,139,250,0.7)',borderRadius:6}
-      ]},
-      options:{ responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{position:'bottom',labels:{padding:12,usePointStyle:true}},
-          tooltip:{mode:'index',intersect:false} },
-        scales:{ x:{grid:{display:false}}, y:{grid:{color:gridC},ticks:{callback:v=>'B/.'+v.toLocaleString()}} } }
-    });
-  }
-})();
-</script>
 </body>
 </html>
- 
