@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, abort, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, abort, session, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 import os
@@ -7,6 +7,7 @@ import threading
 import time
 import secrets
 import json
+import sqlite3
 from datetime import timedelta, datetime
 
 from models import User, db_init
@@ -23,7 +24,12 @@ app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
-app.config['SESSION_COOKIE_NAME'] = '__Host-session'
+# FIX: Eliminado SESSION_COOKIE_NAME = '__Host-session'
+# PythonAnywhere usa HTTPS con proxy, pero el prefijo __Host- requiere
+# que la cookie NO tenga atributo Domain y esté en la raíz del path.
+# Flask-Login no garantiza esto, lo que causaba que la cookie se rechazara
+# silenciosamente en algunos browsers → sesiones que no persistían.
+app.config['SESSION_COOKIE_NAME'] = 'session'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
 
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'xlsx', 'xls', 'xml', 'jpg', 'jpeg', 'png', 'webp'}
@@ -51,79 +57,215 @@ db_init()
 
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET")
 
-# ── JOBS EN BACKGROUND ───────────────────────────────────────
-_jobs: dict = {}
-_jobs_lock = threading.Lock()
+# ══════════════════════════════════════════════════════════════
+# FIX 1 — IP REAL EN PYTHONANYWHERE
+#
+# PythonAnywhere pone la IP real del cliente en X-Forwarded-For,
+# pero SIEMPRE desde su propio proxy interno — no hay riesgo de
+# spoofing porque las requests externas no llegan directamente a
+# tu app WSGI.
+#
+# El problema original: si X-Forwarded-For venía con múltiples IPs
+# (ej: "1.2.3.4, 10.0.0.1"), se tomaba la primera sin validar.
+# Un atacante podría inyectar una IP falsa como primer valor si
+# hubiera otro proxy delante.
+#
+# Solución para PythonAnywhere: tomar el ÚLTIMO valor de la cadena
+# X-Forwarded-For, que es el que añade el proxy confiable de PA.
+# Si no existe el header, usar remote_addr.
+# ══════════════════════════════════════════════════════════════
+# IPs internas de PythonAnywhere (rango de su proxy WSGI)
+# Estas son las únicas que deberían aparecer en remote_addr
+_PYTHONANYWHERE_PROXY_NETS = (
+    "10.",
+    "172.16.", "172.17.", "172.18.", "172.19.",
+    "172.20.", "172.21.", "172.22.", "172.23.",
+    "172.24.", "172.25.", "172.26.", "172.27.",
+    "172.28.", "172.29.", "172.30.", "172.31.",
+    "192.168.",
+    "127.",
+)
+
+def _get_ip() -> str:
+    """
+    Extrae la IP real del cliente, segura para PythonAnywhere.
+    Toma el último valor de X-Forwarded-For (añadido por el proxy de PA)
+    solo si remote_addr es una IP interna (de confianza).
+    Si remote_addr es pública → usarla directamente (dev/otro entorno).
+    """
+    remote = request.remote_addr or "0.0.0.0"
+    xff = request.headers.get("X-Forwarded-For", "").strip()
+
+    # Solo confiar en XFF si quien nos lo entrega es el proxy interno
+    if xff and any(remote.startswith(net) for net in _PYTHONANYWHERE_PROXY_NETS):
+        # Tomar el ÚLTIMO valor — es el que añadió el proxy confiable
+        ips = [ip.strip() for ip in xff.split(",")]
+        return ips[-1] if ips else remote
+
+    return remote
+
 
 # ══════════════════════════════════════════════════════════════
-# PATCH 1 — RATE LIMITER PERSISTENTE EN ARCHIVO JSON
-# Reemplaza el defaultdict en memoria que se perdía al reiniciar.
-# Guarda intentos en ~/.private_data/rate_limit.json con formato:
-#   { "ip": [timestamp, timestamp, ...], ... }
+# RATE LIMITER — PERSISTENTE EN SQLITE
+#
+# FIX 2: El rate limiter original usaba un archivo JSON con escritura
+# completa en cada request, lo que es lento y puede corromperse bajo
+# concurrencia. Reemplazado por SQLite con WAL, que es atómico,
+# concurrente y mucho más rápido para lecturas/escrituras parciales.
+#
+# La tabla rate_limit guarda (ip TEXT, ts REAL) — un registro por
+# intento. _check_rate_limit limpia los registros viejos y cuenta
+# los que quedan en la ventana activa.
 # ══════════════════════════════════════════════════════════════
-_RATE_FILE = os.path.expanduser("~/.private_data/rate_limit.json")
-_rate_lock  = threading.Lock()
+_RATE_DB_PATH = os.path.expanduser("~/.private_data/rate_limit.db")
+_rate_lock    = threading.Lock()
 MAX_ATTEMPTS   = 8
 WINDOW_SECONDS = 300  # 5 minutos
 
-def _load_attempts() -> dict:
-    """Lee el archivo de intentos. Devuelve {} si no existe o está corrupto."""
-    try:
-        with open(_RATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+def _init_rate_db():
+    os.makedirs(os.path.dirname(_RATE_DB_PATH), exist_ok=True)
+    with sqlite3.connect(_RATE_DB_PATH) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS rate_limit (
+                ip   TEXT NOT NULL,
+                ts   REAL NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rate_ip ON rate_limit(ip, ts)")
+        conn.commit()
 
-def _save_attempts(data: dict):
-    """Escribe el dict al archivo. Crea el directorio si hace falta."""
-    os.makedirs(os.path.dirname(_RATE_FILE), exist_ok=True)
-    tmp = _RATE_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f)
-    os.replace(tmp, _RATE_FILE)   # escritura atómica
+_init_rate_db()
 
 def _check_rate_limit(ip: str) -> bool:
     """Retorna True si la IP puede intentar login, False si está bloqueada."""
     now = time.time()
+    cutoff = now - WINDOW_SECONDS
     with _rate_lock:
-        data = _load_attempts()
-        attempts = [t for t in data.get(ip, []) if now - t < WINDOW_SECONDS]
-        data[ip] = attempts
-        _save_attempts(data)
-        return len(attempts) < MAX_ATTEMPTS
+        with sqlite3.connect(_RATE_DB_PATH) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            # Limpiar intentos fuera de la ventana
+            conn.execute("DELETE FROM rate_limit WHERE ts < ?", (cutoff,))
+            count = conn.execute(
+                "SELECT COUNT(*) FROM rate_limit WHERE ip=? AND ts >= ?",
+                (ip, cutoff)
+            ).fetchone()[0]
+            conn.commit()
+    return count < MAX_ATTEMPTS
 
 def _register_attempt(ip: str):
     """Registra un intento fallido para la IP dada."""
     now = time.time()
     with _rate_lock:
-        data = _load_attempts()
-        attempts = [t for t in data.get(ip, []) if now - t < WINDOW_SECONDS]
-        attempts.append(now)
-        data[ip] = attempts
-        _save_attempts(data)
+        with sqlite3.connect(_RATE_DB_PATH) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("INSERT INTO rate_limit (ip, ts) VALUES (?, ?)", (ip, now))
+            conn.commit()
 
-def _get_ip() -> str:
-    xff = request.headers.get('X-Forwarded-For', '')
-    if xff:
-        return xff.split(',')[0].strip()
-    return request.remote_addr or '0.0.0.0'
+
+# ══════════════════════════════════════════════════════════════
+# FIX 3 — JOBS PERSISTENTES EN SQLITE (sin Redis)
+#
+# El problema: _jobs era un dict en memoria del proceso. En producción
+# con múltiples workers (o tras un reinicio del worker en PythonAnywhere),
+# el estado del job se perdía y el cliente veía "idle" para siempre.
+#
+# Solución: tabla jobs_status en la misma SQLite del rate limiter.
+# Guardamos status, msg y ts por nombre de cliente.
+# Los jobs de más de 24h se limpian automáticamente.
+# ══════════════════════════════════════════════════════════════
+_JOBS_DB_PATH = _RATE_DB_PATH  # reutilizamos la misma DB
+_jobs_lock    = threading.Lock()
+
+def _init_jobs_db():
+    with sqlite3.connect(_JOBS_DB_PATH) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS jobs_status (
+                cliente TEXT PRIMARY KEY,
+                status  TEXT NOT NULL,
+                msg     TEXT NOT NULL,
+                ts      REAL NOT NULL
+            )
+        """)
+        conn.commit()
+
+_init_jobs_db()
+
+def _job_set(cliente: str, status: str, msg: str):
+    now = time.time()
+    with _jobs_lock:
+        with sqlite3.connect(_JOBS_DB_PATH) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("""
+                INSERT INTO jobs_status (cliente, status, msg, ts)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(cliente) DO UPDATE SET status=excluded.status,
+                    msg=excluded.msg, ts=excluded.ts
+            """, (cliente, status, msg, now))
+            conn.commit()
+
+def _job_get(cliente: str) -> dict | None:
+    cutoff = time.time() - 86400  # limpiar jobs > 24h
+    with _jobs_lock:
+        with sqlite3.connect(_JOBS_DB_PATH) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("DELETE FROM jobs_status WHERE ts < ?", (cutoff,))
+            row = conn.execute(
+                "SELECT status, msg, ts FROM jobs_status WHERE cliente=?", (cliente,)
+            ).fetchone()
+            conn.commit()
+    if row:
+        return {"status": row[0], "msg": row[1], "ts": row[2]}
+    return None
+
+
+# ══════════════════════════════════════════════════════════════
+# FIX 4 — CSP CON NONCE (eliminar unsafe-inline)
+#
+# El problema: 'unsafe-inline' en script-src anula la protección
+# contra XSS del CSP — cualquier script inyectado en el HTML
+# se ejecutaría igual.
+#
+# Solución: generar un nonce criptográfico por request y pasarlo
+# a Jinja2 como variable global. Cada <script> y <style> del
+# template debe incluir el atributo nonce="{{ csp_nonce() }}".
+#
+# ACCIÓN REQUERIDA EN LOS TEMPLATES:
+#   Reemplazar: <script>
+#   Por:        <script nonce="{{ csp_nonce() }}">
+#   Reemplazar: <style>
+#   Por:        <style nonce="{{ csp_nonce() }}">
+# ══════════════════════════════════════════════════════════════
+def _generate_nonce() -> str:
+    return secrets.token_urlsafe(16)
+
+@app.before_request
+def _set_csp_nonce():
+    g.csp_nonce = _generate_nonce()
+
+def _get_csp_nonce() -> str:
+    return getattr(g, "csp_nonce", "")
+
+app.jinja_env.globals["csp_nonce"] = _get_csp_nonce
 
 # ── SECURITY HEADERS ─────────────────────────────────────────
 @app.after_request
 def set_security_headers(response):
+    nonce = _get_csp_nonce()
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
     response.headers['Content-Security-Policy'] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src https://fonts.gstatic.com; "
-        "img-src 'self' data:; "
-        "connect-src 'self'; "
-        "frame-ancestors 'none';"
+        f"default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}' https://cdnjs.cloudflare.com; "
+        f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com; "
+        f"font-src https://fonts.gstatic.com; "
+        f"img-src 'self' data:; "
+        f"connect-src 'self'; "
+        f"frame-ancestors 'none';"
     )
     return response
 
@@ -141,36 +283,25 @@ def validate_csrf():
     if not token or not form_token or not secrets.compare_digest(token, form_token):
         abort(403)
 
+# ── BACKGROUND JOB (ahora con persistencia en SQLite) ─────────
 def _run_background(nombre_cliente, archivos_guardados):
-    with _jobs_lock:
-        _jobs[nombre_cliente] = {"status": "processing", "msg": "Procesando...", "ts": time.time()}
+    _job_set(nombre_cliente, "processing", "Procesando...")
     try:
         procesar_cliente(nombre_cliente, set())
-        with _jobs_lock:
-            _jobs[nombre_cliente] = {
-                "status": "done",
-                "msg": f"{archivos_guardados} factura(s) procesada(s)",
-                "ts": time.time()
-            }
+        _job_set(nombre_cliente, "done", f"{archivos_guardados} factura(s) procesada(s)")
     except Exception as e:
         import logging, traceback
         logging.error(f"Error en _run_background [{nombre_cliente}]: {e}\n{traceback.format_exc()}")
-        with _jobs_lock:
-            _jobs[nombre_cliente] = {"status": "error", "msg": "Error interno", "ts": time.time()}
+        _job_set(nombre_cliente, "error", "Error interno")
+
 
 # ══════════════════════════════════════════════════════════════
-# PATCH 2 — SESSION FIXATION REAL
-# Flask no tiene session.regenerate. La solución correcta es:
-#   1. Guardar los datos que necesitamos de la sesión vieja.
-#   2. session.clear() — invalida la sesión existente.
-#   3. Reasignar los datos necesarios en la sesión nueva.
-# Esto hace que Flask genere un nuevo session cookie ID.
+# SESSION FIXATION — igual que antes (correcto)
 # ══════════════════════════════════════════════════════════════
 def _regenerar_sesion():
     """Regenera el session ID conservando solo el CSRF token."""
     old_csrf = session.get('_csrf_token')
     session.clear()
-    # Genera un CSRF token fresco para la sesión autenticada
     session['_csrf_token'] = old_csrf or secrets.token_hex(32)
     session.modified = True
 
@@ -193,13 +324,11 @@ def index():
         if User.check_password(email, password):
             user = User.get_by_email(email)
 
-            # ── MFA: si el usuario tiene TOTP configurado, ir a verificación ──
             if User.has_totp(user.id):
                 session['_mfa_pending_user'] = user.id
                 return redirect(url_for("mfa_verify"))
 
-            # Sin MFA: login directo + regenerar sesión
-            _regenerar_sesion()          # ← PATCH 2 en acción
+            _regenerar_sesion()
             login_user(user)
             return redirect(url_for("dashboard"))
 
@@ -237,16 +366,7 @@ def login():
         flash("Correo o contraseña incorrectos", "danger")
     return render_template("login.html")
 
-# ══════════════════════════════════════════════════════════════
-# PATCH 3 — MFA CON PYOTP (TOTP compatible con Google Authenticator)
-#
-# Flujo:
-#   GET  /mfa/setup   → genera secret + QR code para escanear
-#   POST /mfa/setup   → verifica primer código y activa MFA
-#   GET  /mfa/verify  → formulario de código (tras login exitoso)
-#   POST /mfa/verify  → verifica código y completa el login
-#   POST /mfa/disable → desactiva MFA (requiere contraseña)
-# ══════════════════════════════════════════════════════════════
+# ── MFA ───────────────────────────────────────────────────────
 import pyotp
 import qrcode
 import io
@@ -273,7 +393,6 @@ def mfa_setup():
             flash("Código incorrecto. Intenta nuevamente.", "danger")
             return redirect(url_for("mfa_setup"))
 
-    # GET: generar nuevo secret y QR
     secret = pyotp.random_base32()
     totp   = pyotp.TOTP(secret)
     uri    = totp.provisioning_uri(
@@ -281,7 +400,6 @@ def mfa_setup():
         issuer_name="AutomatIA"
     )
 
-    # Generar QR como imagen base64 (sin guardar en disco)
     img    = qrcode.make(uri)
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
@@ -292,7 +410,6 @@ def mfa_setup():
 
 @app.route("/mfa/verify", methods=["GET", "POST"])
 def mfa_verify():
-    """Segundo factor post-login. El user_id está en session['_mfa_pending_user']."""
     pending_id = session.get('_mfa_pending_user')
     if not pending_id:
         return redirect(url_for("login"))
@@ -311,7 +428,7 @@ def mfa_verify():
             totp = pyotp.TOTP(secret)
             if totp.verify(code, valid_window=1):
                 session.pop('_mfa_pending_user', None)
-                _regenerar_sesion()        # regenerar sesión también aquí
+                _regenerar_sesion()
                 login_user(user)
                 return redirect(url_for("dashboard"))
 
@@ -335,14 +452,23 @@ def mfa_disable():
 
 
 # ── REGISTER ──────────────────────────────────────────────────
+# FIX: El GET original aplicaba la validación de admin_key ANTES de
+# leer request.form, pero en un GET el form está vacío → admin_key
+# siempre era None → abort(403) inmediato si intentabas cargar la página.
+# Ahora el GET solo valida si ADMIN_SECRET está configurado y retorna
+# el form. El POST sí valida la clave antes de crear el usuario.
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    admin_key = request.form.get("admin_key") or request.headers.get("X-Admin-Key")
-    if not ADMIN_SECRET or not secrets.compare_digest(admin_key or "", ADMIN_SECRET):
+    if not ADMIN_SECRET:
+        # Si no hay ADMIN_SECRET configurado, registro completamente cerrado
         abort(403)
 
     if request.method == "POST":
         validate_csrf()
+        admin_key = request.form.get("admin_key") or request.headers.get("X-Admin-Key")
+        if not secrets.compare_digest(admin_key or "", ADMIN_SECRET):
+            abort(403)
+
         nombre   = request.form.get("nombre", "").strip()
         email    = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
@@ -367,19 +493,19 @@ def register():
         flash(f"Cliente '{nombre}' creado exitosamente", "success")
         return redirect(url_for("register"))
 
+    # GET: mostrar el form (la clave la ingresan en el form mismo)
     return render_template("register.html")
 
 # ── DASHBOARD ─────────────────────────────────────────────────
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    import sqlite3 as _sq
     rutas    = get_rutas_cliente(current_user.nombre)
     facturas = []
     if os.path.exists(rutas["db"]):
         try:
-            with _sq.connect(rutas["db"]) as conn:
-                conn.row_factory = _sq.Row
+            with sqlite3.connect(rutas["db"]) as conn:
+                conn.row_factory = sqlite3.Row
                 rows = conn.execute("""
                     SELECT id, archivo AS Archivo, proveedor AS Proveedor,
                            ruc AS RUC, fecha AS Fecha,
@@ -405,7 +531,6 @@ def dashboard():
 @login_required
 def editar_factura():
     validate_csrf()
-    import sqlite3
 
     try:
         factura_id = int(request.form.get("factura_id"))
@@ -413,7 +538,6 @@ def editar_factura():
         flash("ID de factura inválido", "danger")
         return redirect(url_for("dashboard"))
 
-    # Campos editables con sus límites
     proveedor   = request.form.get("proveedor",   "").strip()[:200]
     ruc         = request.form.get("ruc",         "").strip()[:30]
     fecha       = request.form.get("fecha",       "").strip()[:10]
@@ -433,7 +557,6 @@ def editar_factura():
     if categoria not in categorias_validas:
         categoria = "Otros"
 
-    # Numéricos — None si vacío
     def parse_float(key):
         val = request.form.get(key, "").strip()
         if not val:
@@ -462,7 +585,6 @@ def editar_factura():
         return redirect(url_for("dashboard"))
 
     with sqlite3.connect(rutas["db"]) as conn:
-        # Verificar que la factura pertenece a este cliente
         existe = conn.execute(
             "SELECT 1 FROM facturas WHERE id=?", (factura_id,)
         ).fetchone()
@@ -495,7 +617,6 @@ def editar_factura():
 @login_required
 def actualizar_estado():
     validate_csrf()
-    import sqlite3
 
     try:
         factura_id = int(request.form.get("factura_id"))
@@ -606,12 +727,11 @@ def upload():
 
     return redirect(url_for("dashboard"))
 
-# ── ESTADO DEL JOB ────────────────────────────────────────────
+# ── ESTADO DEL JOB (ahora lee desde SQLite) ──────────────────
 @app.route("/upload/status")
 @login_required
 def upload_status():
-    with _jobs_lock:
-        job = _jobs.get(current_user.nombre)
+    job = _job_get(current_user.nombre)
     if not job:
         return jsonify({"status": "idle"})
     safe_job = {
