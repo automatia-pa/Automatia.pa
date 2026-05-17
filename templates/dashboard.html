@@ -104,6 +104,7 @@
   /* ACTION BUTTON */
   .action-btn { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:0.3rem 0.7rem; font-size:0.78rem; cursor:pointer; font-family:"DM Sans",sans-serif; transition:all 0.2s; }
   .action-btn:hover { border-color:rgba(0,229,195,0.4); color:var(--accent); background:rgba(0,229,195,0.04); }
+  .btn-eliminar-factura:hover, .btn-eliminar-venta:hover { border-color:rgba(248,113,113,0.5) !important; color:var(--error) !important; background:rgba(248,113,113,0.06) !important; }
   .edit-btn:hover { border-color:rgba(59,130,246,0.4); color:var(--accent2); background:rgba(59,130,246,0.04); }
  
   /* MODAL EDICION */
@@ -470,6 +471,12 @@
               </button>
               <button class="action-btn edit-btn btn-editar" data-idx="{{ fid }}">
                 ✏ Editar
+              </button>
+              <button class="action-btn btn-eliminar-factura"
+                      data-id="{{ f.get('id') }}"
+                      data-nombre="{{ f.get('Proveedor', f.get('Archivo', ''))|e }}"
+                      title="Eliminar esta factura permanentemente">
+                🗑 Borrar
               </button>
             </td>
           </tr>
@@ -925,5 +932,47 @@ new Chart(document.getElementById('chartCantidad'), {
 });
 </script>
 {% endif %}
+
+<!-- MODAL CONFIRMACIÓN ELIMINAR FACTURA -->
+<div id="deleteOverlay" class="modal-overlay">
+  <div class="modal-card" style="max-width:400px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="color:var(--error);">⚠ Eliminar factura</div>
+        <div class="modal-sub" id="deleteNombre"></div>
+      </div>
+      <button class="modal-close btn-cerrar-delete">✕</button>
+    </div>
+    <p style="font-size:0.88rem;color:var(--muted);line-height:1.6;margin-bottom:1.5rem;">
+      Esta acción es <strong style="color:var(--error);">permanente e irreversible</strong>. Se eliminará el registro de la base de datos y el archivo original del servidor.
+    </p>
+    <form method="POST" action="/factura/eliminar" id="deleteForm">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="factura_id" id="deleteFacturaId">
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+        <button type="button" class="btn-cancel btn-cerrar-delete">Cancelar</button>
+        <button type="submit" style="background:var(--error);color:#fff;border:none;border-radius:100px;padding:0.6rem 1.5rem;font-size:0.88rem;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Sí, eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script nonce="{{ csp_nonce() }}">
+  // ── Modal eliminar factura ─────────────────────────────────
+  document.addEventListener('click', function(e) {
+    const dBtn = e.target.closest('.btn-eliminar-factura');
+    if (dBtn) {
+      document.getElementById('deleteFacturaId').value = dBtn.dataset.id;
+      document.getElementById('deleteNombre').textContent = dBtn.dataset.nombre || 'esta factura';
+      document.getElementById('deleteOverlay').classList.add('open');
+      return;
+    }
+    if (e.target.closest('.btn-cerrar-delete') || e.target.id === 'deleteOverlay') {
+      document.getElementById('deleteOverlay').classList.remove('open');
+    }
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('deleteOverlay').classList.remove('open');
+  });
+</script>
 </body>
 </html>

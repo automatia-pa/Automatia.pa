@@ -112,6 +112,7 @@
   /* ACTION BUTTONS */
   .action-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer; font-family: "DM Sans", sans-serif; transition: all 0.2s; }
   .action-btn:hover { border-color: rgba(59,130,246,0.4); color: var(--accent2); background: rgba(59,130,246,0.04); }
+  .btn-eliminar-venta:hover { border-color: rgba(248,113,113,0.5) !important; color: var(--error) !important; background: rgba(248,113,113,0.06) !important; }
 
   /* MODAL */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); z-index: 1000; align-items: center; justify-content: center; padding: 1rem; }
@@ -362,6 +363,12 @@
                       data-descripcion="{{ v.get('descripcion','')|e }}">
                 ✏ Editar
               </button>
+              <button class="action-btn btn-eliminar-venta"
+                      data-vid="{{ v.get('id') }}"
+                      data-cliente="{{ v.get('cliente','')|e }}"
+                      title="Eliminar esta venta permanentemente">
+                🗑 Borrar
+              </button>
             </td>
           </tr>
           {% endfor %}
@@ -608,6 +615,44 @@ function checkJobStatus() {
     }).catch(() => {});
 }
 checkJobStatus();
+</script>
+
+<!-- MODAL CONFIRMACIÓN ELIMINAR VENTA -->
+<div id="deleteVentaOverlay" class="modal-overlay">
+  <div class="modal-card" style="max-width:400px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" style="color:var(--error);">⚠ Eliminar venta</div>
+        <div class="modal-sub" id="deleteVentaNombre"></div>
+      </div>
+      <button class="modal-close" id="btnCerrarDeleteVenta">✕</button>
+    </div>
+    <p style="font-size:0.88rem;color:var(--muted);line-height:1.6;margin-bottom:1.5rem;">
+      Esta acción es <strong style="color:var(--error);">permanente e irreversible</strong>. Se eliminará el registro de la base de datos y el archivo original del servidor.
+    </p>
+    <form method="POST" action="/ventas/eliminar" id="deleteVentaForm">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="venta_id" id="deleteVentaId">
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+        <button type="button" class="btn-cancel" id="btnCancelarDeleteVenta">Cancelar</button>
+        <button type="submit" style="background:var(--error);color:#fff;border:none;border-radius:100px;padding:0.6rem 1.5rem;font-size:0.88rem;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;">Sí, eliminar</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script nonce="{{ csp_nonce() }}">
+  const deleteVentaOverlay = document.getElementById('deleteVentaOverlay');
+  document.querySelectorAll('.btn-eliminar-venta').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('deleteVentaId').value    = btn.dataset.vid;
+      document.getElementById('deleteVentaNombre').textContent = btn.dataset.cliente || 'esta venta';
+      deleteVentaOverlay.classList.add('open');
+    });
+  });
+  document.getElementById('btnCerrarDeleteVenta').addEventListener('click',   () => deleteVentaOverlay.classList.remove('open'));
+  document.getElementById('btnCancelarDeleteVenta').addEventListener('click', () => deleteVentaOverlay.classList.remove('open'));
+  deleteVentaOverlay.addEventListener('click', e => { if (e.target === deleteVentaOverlay) deleteVentaOverlay.classList.remove('open'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') deleteVentaOverlay.classList.remove('open'); });
 </script>
 </body>
 </html>

@@ -1178,6 +1178,102 @@ def api_cruce_iva():
     return jsonify(resultado)
 
 
+# ── ELIMINAR FACTURA (COMPRA) ─────────────────────────────────
+@app.route("/factura/eliminar", methods=["POST"])
+@login_required
+def eliminar_factura():
+    validate_csrf()
+    try:
+        factura_id = int(request.form.get("factura_id"))
+    except (TypeError, ValueError):
+        flash("ID de factura inválido", "danger")
+        return redirect(url_for("dashboard"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Sin datos aún", "warning")
+        return redirect(url_for("dashboard"))
+
+    with sqlite3.connect(rutas["db"]) as conn:
+        row = conn.execute(
+            "SELECT archivo FROM facturas WHERE id=?", (factura_id,)
+        ).fetchone()
+        if not row:
+            flash("Factura no encontrada", "danger")
+            return redirect(url_for("dashboard"))
+
+        archivo = os.path.basename(row[0] or "")
+        conn.execute("DELETE FROM facturas WHERE id=?", (factura_id,))
+
+    # Borrar archivo físico de las carpetas del cliente
+    for carpeta in [rutas.get("procesados", ""), rutas.get("facturas", "")]:
+        if archivo and carpeta:
+            ruta_archivo = os.path.join(carpeta, archivo)
+            if os.path.exists(ruta_archivo):
+                try:
+                    os.remove(ruta_archivo)
+                except OSError:
+                    pass
+
+    from facturas_processor import exportar_excel
+    try:
+        exportar_excel(rutas["db"], rutas["excel"])
+    except Exception:
+        pass  # No bloquear el flujo si la tabla quedó vacía
+
+    flash("Factura eliminada correctamente", "success")
+    return redirect(url_for("dashboard"))
+
+
+# ── ELIMINAR VENTA ────────────────────────────────────────────
+@app.route("/ventas/eliminar", methods=["POST"])
+@login_required
+def eliminar_venta():
+    validate_csrf()
+    try:
+        venta_id = int(request.form.get("venta_id"))
+    except (TypeError, ValueError):
+        flash("ID de venta inválido", "danger")
+        return redirect(url_for("ventas"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Sin datos aún", "warning")
+        return redirect(url_for("ventas"))
+
+    with sqlite3.connect(rutas["db"]) as conn:
+        row = conn.execute(
+            "SELECT archivo FROM ventas WHERE id=?", (venta_id,)
+        ).fetchone()
+        if not row:
+            flash("Venta no encontrada", "danger")
+            return redirect(url_for("ventas"))
+
+        archivo = os.path.basename(row[0] or "")
+        conn.execute("DELETE FROM ventas WHERE id=?", (venta_id,))
+
+    # Borrar archivo físico de la carpeta de ventas.
+    # Los archivos procesados van a ventas/procesados/ (según facturas_processor.py línea 868)
+    carpeta_ventas      = rutas["ventas"]
+    carpeta_ventas_proc = os.path.join(rutas["ventas"], "procesados")
+    for carpeta in [carpeta_ventas_proc, carpeta_ventas]:
+        if archivo and carpeta:
+            ruta_archivo = os.path.join(carpeta, archivo)
+            if os.path.exists(ruta_archivo):
+                try:
+                    os.remove(ruta_archivo)
+                except OSError:
+                    pass
+
+    try:
+        exportar_excel_ventas(rutas["db"], rutas["excel_ventas"])
+    except Exception:
+        pass  # No bloquear el flujo si la tabla quedó vacía
+
+    flash("Venta eliminada correctamente", "success")
+    return redirect(url_for("ventas"))
+
+
 # ── LOGOUT ────────────────────────────────────────────────────
 @app.route("/logout")
 @login_required
