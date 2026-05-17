@@ -186,6 +186,207 @@ _FECHA_PATTERNS = [
 ]
 _MONEDAS_VALIDAS = {"USD", "PAB", "EUR", "COP", "MXN", "PEN", "CLP", "ARS", "BRL"}
 
+# ══════════════════════════════════════════════════════════════
+# VALIDACIÓN DE RUC CONTRA DGI — portal e-Tax público
+#
+# La DGI Panamá expone una búsqueda pública en etax2.mef.gob.pa.
+# Hacemos una request HTTP simple y parseamos la respuesta.
+# Resultado se cachea en memoria (TTL 1 hora) para no martillar
+# el portal en cada factura que llega.
+# ══════════════════════════════════════════════════════════════
+import urllib.parse as _uparse
+import html as _html_lib
+
+_dgi_cache: dict = {}          # {ruc: {"ok": bool, "nombre": str, "ts": float}}
+_DGI_CACHE_TTL = 3600          # 1 hora
+
+def validar_ruc_dgi(ruc: str) -> dict:
+    """
+    Consulta el portal e-Tax de la DGI para verificar si un RUC existe.
+
+    Retorna dict con claves:
+        ok      (bool)  — True si el RUC fue encontrado
+        nombre  (str)   — Nombre del contribuyente según DGI (o "")
+        error   (str)   — Mensaje de error si la consulta falló
+        fuente  (str)   — "dgi" | "cache" | "error"
+    """
+    if not ruc:
+        return {"ok": False, "nombre": "", "error": "RUC vacío", "fuente": "error"}
+
+    ruc_limpio = re.sub(r'\s+', '', str(ruc)).upper()
+
+    # Cache hit
+    cached = _dgi_cache.get(ruc_limpio)
+    if cached and (time.time() - cached["ts"]) < _DGI_CACHE_TTL:
+        return {**cached, "fuente": "cache"}
+
+    try:
+        # Endpoint público del portal DGI / e-Tax 2.0
+        url = "https://etax2.mef.gob.pa/etax2web/BusquedaContribuyente.xhtml"
+        params = _uparse.urlencode({"ruc": ruc_limpio})
+        full_url = f"{url}?{params}"
+
+        req = urllib.request.Request(
+            full_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; AutomatIA/1.0)",
+                "Accept": "text/html,application/xhtml+xml",
+            }
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+
+        # Buscar nombre del contribuyente en la respuesta HTML
+        # El portal muestra el nombre en un elemento con clase o texto reconocible
+        nombre = ""
+
+        # Patrón 1: tabla con datos del contribuyente
+        m = re.search(
+            r'(?:Nombre|Raz[oó]n Social|Contribuyente)[^<]*</[^>]+>\s*<[^>]+>\s*([^<]{3,120})',
+            body, re.IGNORECASE
+        )
+        if m:
+            nombre = _html_lib.unescape(m.group(1)).strip()
+
+        # Patrón 2: valor en campo de texto
+        if not nombre:
+            m = re.search(
+                r'<input[^>]+(?:nombre|razon)[^>]+value=["\']([^"\']{3,120})["\']',
+                body, re.IGNORECASE
+            )
+            if m:
+                nombre = _html_lib.unescape(m.group(1)).strip()
+
+        # Patrón 3: texto libre después del RUC en la respuesta
+        if not nombre:
+            m = re.search(
+                r'(?:' + re.escape(ruc_limpio) + r')[^<]{0,30}<[^>]+>\s*([A-ZÁÉÍÓÚÑ][^<]{2,80})',
+                body, re.IGNORECASE
+            )
+            if m:
+                nombre = _html_lib.unescape(m.group(1)).strip()
+
+        # Determinar si el RUC existe: si encontramos nombre O si el HTML
+        # no contiene mensajes de "no encontrado"
+        no_encontrado_patterns = [
+            "no se encontr", "not found", "ruc no existe",
+            "no existe", "sin resultados", "no hay resultados"
+        ]
+        body_lower = body.lower()
+        no_encontrado = any(p in body_lower for p in no_encontrado_patterns)
+
+        # El RUC es válido si la página responde sin mensaje de error Y tiene contenido
+        ruc_ok = bool(nombre) or (not no_encontrado and len(body) > 500)
+
+        resultado = {
+            "ok": ruc_ok,
+            "nombre": nombre,
+            "error": "" if ruc_ok else "RUC no encontrado en DGI",
+            "ts": time.time(),
+        }
+        _dgi_cache[ruc_limpio] = resultado
+        return {**resultado, "fuente": "dgi"}
+
+    except urllib.error.URLError as e:
+        slog("warning", "DGI no accesible para RUC {}: {}", ruc_limpio, str(e))
+        return {"ok": None, "nombre": "", "error": f"DGI inaccesible: {e.reason}", "fuente": "error"}
+    except Exception as e:
+        slog("warning", "Error validando RUC {} en DGI: {}", ruc_limpio, str(e))
+        return {"ok": None, "nombre": "", "error": str(e), "fuente": "error"}
+
+
+# ══════════════════════════════════════════════════════════════
+# CÁLCULO DE ITBMS ESPERADO
+#
+# Panamá aplica ITBMS del 7% sobre la base imponible (subtotal).
+# Tasas especiales: 10% bebidas alcohólicas, 15% tabaco, 0% exentos.
+# Esta función calcula el ITBMS esperado y detecta discrepancias.
+# ══════════════════════════════════════════════════════════════
+TASA_ITBMS_GENERAL   = 0.07
+TASA_ITBMS_ALCOHOL   = 0.10
+TASA_ITBMS_TABACO    = 0.15
+TOLERANCIA_ITBMS     = 0.02   # ±2 centavos por redondeo
+
+_KEYWORDS_ALCOHOL = re.compile(r'\b(cerveza|licor|ron|whisky|vino|alcohol|beer|spirits)\b', re.IGNORECASE)
+_KEYWORDS_TABACO  = re.compile(r'\b(cigarro|cigarrillo|tabaco|tobacco|cigars?)\b', re.IGNORECASE)
+_KEYWORDS_EXENTO  = re.compile(r'\b(exento|exent[ao]s?|exempt|medicamento|medicine|alimento básico)\b', re.IGNORECASE)
+
+def calcular_itbms_esperado(subtotal: float, descripcion: str = "") -> tuple:
+    """
+    Calcula el ITBMS esperado dado un subtotal y descripción.
+    Retorna (itbms_esperado: float, tasa: float, categoria: str)
+    """
+    desc = descripcion or ""
+    if _KEYWORDS_EXENTO.search(desc):
+        return 0.0, 0.0, "exento"
+    elif _KEYWORDS_TABACO.search(desc):
+        tasa = TASA_ITBMS_TABACO
+        cat  = "tabaco_15pct"
+    elif _KEYWORDS_ALCOHOL.search(desc):
+        tasa = TASA_ITBMS_ALCOHOL
+        cat  = "alcohol_10pct"
+    else:
+        tasa = TASA_ITBMS_GENERAL
+        cat  = "general_7pct"
+
+    return round(subtotal * tasa, 2), tasa, cat
+
+
+def verificar_itbms(datos: dict) -> list:
+    """
+    Verifica que el ITBMS declarado sea consistente con el subtotal.
+    Retorna lista de advertencias (vacía si todo está bien).
+    """
+    advertencias = []
+    try:
+        subtotal    = float(datos.get("subtotal") or 0)
+        itbms       = datos.get("itbms")
+        monto_total = float(datos.get("monto_total") or 0)
+        descripcion = str(datos.get("descripcion") or "")
+
+        if itbms is None:
+            return advertencias  # no reportado, sin alarma
+
+        itbms = float(itbms)
+
+        if subtotal <= 0 and monto_total > 0:
+            # Intentar reconstruir subtotal desde monto_total e itbms
+            subtotal = monto_total - itbms
+
+        if subtotal <= 0:
+            return advertencias
+
+        esperado, tasa, cat = calcular_itbms_esperado(subtotal, descripcion)
+
+        diferencia = abs(itbms - esperado)
+        if cat == "exento" and itbms > 0:
+            advertencias.append(
+                f"⚠ ITBMS: factura parece exenta pero declara ITBMS de B/.{itbms:.2f}"
+            )
+        elif diferencia > TOLERANCIA_ITBMS:
+            pct_tasa = int(tasa * 100)
+            advertencias.append(
+                f"⚠ ITBMS posiblemente incorrecto: declarado B/.{itbms:.2f}, "
+                f"esperado B/.{esperado:.2f} ({pct_tasa}% de B/.{subtotal:.2f}). "
+                f"Diferencia: B/.{diferencia:.2f}"
+            )
+
+        # Verificar cuadratura: subtotal + itbms ≈ monto_total
+        if monto_total > 0:
+            suma = subtotal + itbms
+            dif_total = abs(suma - monto_total)
+            if dif_total > 0.05:
+                advertencias.append(
+                    f"⚠ Cuadratura: subtotal ({subtotal:.2f}) + ITBMS ({itbms:.2f}) "
+                    f"= {suma:.2f} ≠ monto_total ({monto_total:.2f}). "
+                    f"Diferencia: B/.{dif_total:.2f}"
+                )
+    except (TypeError, ValueError):
+        pass
+
+    return advertencias
+
+
 def validar_campos_fiscales(datos: dict) -> tuple:
     """
     Valida campos fiscales panameños.
@@ -246,6 +447,9 @@ def validar_campos_fiscales(datos: dict) -> tuple:
     if cufe and cufe not in (None, "null", ""):
         if not re.match(r'^[a-zA-Z0-9\-_]+$', str(cufe)):
             advertencias.append(f"CUFE con caracteres inusuales: '{str(cufe)[:30]}'")
+
+    # ── Verificación de ITBMS ─────────────────────────────────
+    advertencias.extend(verificar_itbms(datos))
 
     # Solo advertencias no críticas → igual es válido
     tiene_error_critico = any(
@@ -878,6 +1082,258 @@ def guardar_factura(db_path, datos, archivo, modelo):
     except Exception as e:
         slog("error", "Error guardando factura {}: {}", archivo, str(e))
         return False
+
+# ══════════════════════════════════════════════════════════════
+# FORMULARIO 103 — DECLARACIÓN JURADA DE COMPRAS Y GASTOS
+#
+# Genera un Excel con el formato que exige la DGI Panamá para el
+# Formulario 103 (Retención de ITBMS en compras a no residentes
+# y declaración de gastos deducibles).
+#
+# Estructura basada en el formulario público DGI F-103 v2020:
+#   Sección A — Identificación del declarante
+#   Sección B — Detalle de compras por proveedor (una fila por RUC)
+#   Sección C — Totales
+# ══════════════════════════════════════════════════════════════
+def exportar_formulario103(db_path: str, output_path: str,
+                           nombre_empresa: str, ruc_empresa: str = "",
+                           periodo: str = "") -> dict:
+    """
+    Genera el Formulario 103 precompletado como archivo Excel.
+
+    Args:
+        db_path:        Ruta a la base de datos SQLite del cliente.
+        output_path:    Ruta de salida del archivo .xlsx.
+        nombre_empresa: Nombre o razón social del declarante.
+        ruc_empresa:    RUC del declarante (opcional).
+        periodo:        'YYYY-MM' para filtrar por mes, o '' para todo.
+
+    Returns:
+        dict con claves: total_proveedores, total_compras,
+                         total_itbms, total_retencion, ruta
+    """
+    from openpyxl.styles import (Font, PatternFill, Alignment,
+                                 Border, Side, numbers)
+    from openpyxl.utils import get_column_letter
+
+    VERDE_DGI  = "1A5276"   # azul oscuro DGI (encabezado)
+    GRIS_SUAVE = "D5D8DC"
+    AMARILLO   = "FCF3CF"
+    BLANCO     = "FFFFFF"
+
+    thin = Side(style="thin", color="AAAAAA")
+    borde = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def hdr_cell(ws, row, col, value, bg=VERDE_DGI, fg="FFFFFF", bold=True, size=10, wrap=False):
+        c = ws.cell(row=row, column=col, value=value)
+        c.fill   = PatternFill("solid", fgColor=bg)
+        c.font   = Font(bold=bold, color=fg, size=size)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=wrap)
+        c.border = borde
+        return c
+
+    def data_cell(ws, row, col, value, fmt=None, bg=BLANCO, bold=False, align="left"):
+        c = ws.cell(row=row, column=col, value=value)
+        c.fill   = PatternFill("solid", fgColor=bg)
+        c.font   = Font(bold=bold, size=10)
+        c.alignment = Alignment(horizontal=align, vertical="center")
+        c.border = borde
+        if fmt:
+            c.number_format = fmt
+        return c
+
+    # ── Leer facturas aprobadas de la DB ──────────────────────
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            q = """
+                SELECT
+                    ruc, proveedor,
+                    SUM(monto_total)                              AS total_compras,
+                    SUM(COALESCE(subtotal,
+                        monto_total - COALESCE(itbms, 0)))        AS total_subtotal,
+                    SUM(COALESCE(itbms, 0))                       AS total_itbms,
+                    COUNT(*)                                      AS num_facturas,
+                    MAX(fecha)                                    AS ultima_fecha,
+                    categoria
+                FROM facturas
+                WHERE estado = 'aprobada'
+            """
+            params = []
+            if periodo:
+                q += " AND fecha LIKE ?"
+                params.append(f"{periodo}%")
+            q += " GROUP BY COALESCE(ruc, proveedor) ORDER BY total_compras DESC"
+            rows = conn.execute(q, params).fetchall()
+    except Exception as e:
+        slog("error", "F103 error leyendo DB: {}", str(e))
+        return {"error": str(e)}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Formulario 103"
+
+    # ── ENCABEZADO INSTITUCIONAL ──────────────────────────────
+    ws.merge_cells("A1:J1")
+    c = ws["A1"]
+    c.value = "REPÚBLICA DE PANAMÁ — MINISTERIO DE ECONOMÍA Y FINANZAS — DIRECCIÓN GENERAL DE INGRESOS"
+    c.font  = Font(bold=True, size=11, color="FFFFFF")
+    c.fill  = PatternFill("solid", fgColor=VERDE_DGI)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A2:J2")
+    c = ws["A2"]
+    c.value = "FORMULARIO 103 — DECLARACIÓN JURADA DE COMPRAS Y GASTOS (ITBMS)"
+    c.font  = Font(bold=True, size=12, color="FFFFFF")
+    c.fill  = PatternFill("solid", fgColor=VERDE_DGI)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[2].height = 22
+
+    # ── SECCIÓN A — IDENTIFICACIÓN DEL DECLARANTE ─────────────
+    ROW_A = 4
+    ws.merge_cells(f"A{ROW_A}:J{ROW_A}")
+    c = ws.cell(row=ROW_A, column=1, value="SECCIÓN A — IDENTIFICACIÓN DEL DECLARANTE")
+    c.font = Font(bold=True, size=10, color="FFFFFF")
+    c.fill = PatternFill("solid", fgColor="2E86C1")
+    c.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[ROW_A].height = 16
+
+    # Fila datos declarante
+    etiquetas_a = [
+        ("Nombre / Razón Social:", nombre_empresa),
+        ("RUC:",                   ruc_empresa or "—"),
+        ("Período:",               periodo or "Todos"),
+        ("Fecha generación:",      datetime.now().strftime("%d/%m/%Y")),
+    ]
+    col_a = 1
+    for etiq, val in etiquetas_a:
+        ws.cell(row=ROW_A+1, column=col_a,   value=etiq).font = Font(bold=True, size=9)
+        ws.cell(row=ROW_A+1, column=col_a+1, value=val).font  = Font(size=9)
+        col_a += 3
+    ws.row_dimensions[ROW_A+1].height = 14
+
+    # ── SECCIÓN B — DETALLE POR PROVEEDOR ─────────────────────
+    ROW_B = ROW_A + 3
+    ws.merge_cells(f"A{ROW_B}:J{ROW_B}")
+    c = ws.cell(row=ROW_B, column=1, value="SECCIÓN B — DETALLE DE COMPRAS POR PROVEEDOR / SUPLIDOR")
+    c.font = Font(bold=True, size=10, color="FFFFFF")
+    c.fill = PatternFill("solid", fgColor="2E86C1")
+    c.alignment = Alignment(horizontal="left", vertical="center")
+
+    COLS_B = [
+        ("N°",                  5),
+        ("RUC del Proveedor",  18),
+        ("Nombre / Razón Social", 32),
+        ("Categoría",          18),
+        ("N° Facturas",        12),
+        ("Última Fecha",       14),
+        ("Base Imponible\n(Subtotal)", 16),
+        ("ITBMS\nDeclarado",   14),
+        ("Retención\n(1% ITBMS)", 14),
+        ("Total\nCompras",     14),
+    ]
+    ROW_HDR = ROW_B + 1
+    for ci, (label, _) in enumerate(COLS_B, 1):
+        hdr_cell(ws, ROW_HDR, ci, label, wrap=True)
+    ws.row_dimensions[ROW_HDR].height = 30
+
+    # Anchos de columna
+    for ci, (_, w) in enumerate(COLS_B, 1):
+        ws.column_dimensions[get_column_letter(ci)].width = w
+
+    # Filas de datos
+    total_compras   = 0.0
+    total_itbms_sum = 0.0
+    total_subtotal  = 0.0
+    total_retencion = 0.0
+
+    for idx, row in enumerate(rows, 1):
+        r = ROW_HDR + idx
+        bg = BLANCO if idx % 2 == 0 else GRIS_SUAVE
+
+        tc  = float(row["total_compras"]  or 0)
+        ti  = float(row["total_itbms"]    or 0)
+        ts  = float(row["total_subtotal"] or 0)
+        ret = round(ti * 0.01, 2)   # retención del 1% sobre ITBMS pagado
+
+        total_compras   += tc
+        total_itbms_sum += ti
+        total_subtotal  += ts
+        total_retencion += ret
+
+        data_cell(ws, r, 1,  idx,                            align="center", bg=bg)
+        data_cell(ws, r, 2,  row["ruc"] or "SIN RUC",       bg=bg)
+        data_cell(ws, r, 3,  row["proveedor"] or "",         bg=bg)
+        data_cell(ws, r, 4,  row["categoria"] or "Otros",    bg=bg)
+        data_cell(ws, r, 5,  row["num_facturas"],            align="center", bg=bg)
+        data_cell(ws, r, 6,  row["ultima_fecha"] or "",      align="center", bg=bg)
+        data_cell(ws, r, 7,  ts,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
+        data_cell(ws, r, 8,  ti,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
+        data_cell(ws, r, 9,  ret, fmt='#,##0.00 "B/."',     align="right", bg=bg)
+        data_cell(ws, r, 10, tc,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
+
+    # ── SECCIÓN C — TOTALES ───────────────────────────────────
+    ROW_TOT = ROW_HDR + len(rows) + 2
+    ws.merge_cells(f"A{ROW_TOT}:J{ROW_TOT}")
+    c = ws.cell(row=ROW_TOT, column=1, value="SECCIÓN C — TOTALES")
+    c.font = Font(bold=True, size=10, color="FFFFFF")
+    c.fill = PatternFill("solid", fgColor="2E86C1")
+    c.alignment = Alignment(horizontal="left", vertical="center")
+
+    tot_labels = [
+        ("Total Proveedores Declarados:", len(rows),            None),
+        ("Total Base Imponible:",          total_subtotal,  '#,##0.00 "B/."'),
+        ("Total ITBMS Declarado:",         total_itbms_sum, '#,##0.00 "B/."'),
+        ("Total Retención (1%):",          total_retencion, '#,##0.00 "B/."'),
+        ("TOTAL GENERAL COMPRAS:",         total_compras,   '#,##0.00 "B/."'),
+    ]
+    for ti_idx, (label, val, fmt) in enumerate(tot_labels):
+        r = ROW_TOT + 1 + ti_idx
+        ws.merge_cells(f"A{r}:F{r}")
+        lc = ws.cell(row=r, column=1, value=label)
+        lc.font = Font(bold=True, size=10)
+        lc.fill = PatternFill("solid", fgColor=AMARILLO)
+        lc.alignment = Alignment(horizontal="right", vertical="center")
+        lc.border = borde
+
+        ws.merge_cells(f"G{r}:J{r}")
+        vc = ws.cell(row=r, column=7, value=val)
+        vc.font = Font(bold=True, size=10)
+        vc.fill = PatternFill("solid", fgColor=AMARILLO)
+        vc.alignment = Alignment(horizontal="right", vertical="center")
+        vc.border = borde
+        if fmt:
+            vc.number_format = fmt
+
+    # ── NOTA LEGAL ────────────────────────────────────────────
+    ROW_NOTA = ROW_TOT + len(tot_labels) + 2
+    ws.merge_cells(f"A{ROW_NOTA}:J{ROW_NOTA}")
+    nota = (
+        "NOTA: Este formulario es generado automáticamente por AutomatIA a partir de las facturas "
+        "aprobadas en el sistema. Verifique los datos antes de presentar ante la DGI. "
+        "La retención del 1% aplica según el Art. 1057-V del Código Fiscal."
+    )
+    nc = ws.cell(row=ROW_NOTA, column=1, value=nota)
+    nc.font = Font(italic=True, size=8, color="555555")
+    nc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[ROW_NOTA].height = 30
+
+    try:
+        wb.save(output_path)
+    except Exception as e:
+        slog("error", "F103 error guardando Excel: {}", str(e))
+        return {"error": str(e)}
+
+    return {
+        "total_proveedores": len(rows),
+        "total_compras":     round(total_compras, 2),
+        "total_itbms":       round(total_itbms_sum, 2),
+        "total_retencion":   round(total_retencion, 2),
+        "ruta":              output_path,
+    }
+
 
 # ─────────────────────────────────────────
 def procesar_cliente(nombre_cliente, procesadas):

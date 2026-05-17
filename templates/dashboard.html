@@ -351,6 +351,7 @@
       {% if facturas %}
       <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
         <a href="/download-dgi" class="download-btn" title="Solo facturas aprobadas, formato DGI Panamá">&#128196; Exportar DGI</a>
+        <a href="/download-formulario103" class="download-btn" title="Formulario 103 precompletado — declaración de compras ITBMS" style="border-color:rgba(245,158,11,0.4);color:var(--accent3);">&#128203; Formulario 103</a>
         <a href="/download-excel" class="download-btn">&#8595; Excel Completo</a>
       </div>
       {% endif %}
@@ -538,8 +539,11 @@
         </div>
         <div class="edit-field">
           <label>RUC</label>
-          <input type="text" name="ruc" id="editRuc" placeholder="8-123-45678" maxlength="30">
-          <div class="edit-nota">Formato panameño: 8-XXX-XXXXX</div>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <input type="text" name="ruc" id="editRuc" placeholder="8-123-45678" maxlength="30" style="flex:1;">
+            <button type="button" id="btnValidarRuc" class="action-btn" style="white-space:nowrap;flex-shrink:0;" title="Verificar RUC en el portal DGI">🔍 DGI</button>
+          </div>
+          <div id="rucStatus" class="edit-nota" style="margin-top:0.35rem;"></div>
         </div>
         <div class="edit-field">
           <label>Fecha</label>
@@ -552,6 +556,7 @@
         <div class="edit-field">
           <label>ITBMS (7%)</label>
           <input type="number" name="itbms" id="editItbms" step="0.01" min="0" placeholder="0.00">
+          <div id="itbmsStatus" class="edit-nota" style="margin-top:0.35rem;"></div>
         </div>
         <div class="edit-field">
           <label>Subtotal</label>
@@ -739,7 +744,86 @@
   window.addEventListener('DOMContentLoaded', aplicarFiltros);
   setTimeout(aplicarFiltros, 100);
 
-  // ── Polling de estado de procesamiento ──────────────────────
+  // ══════════════════════════════════════════════════════════════
+  // VALIDACIÓN RUC EN DGI
+  // ══════════════════════════════════════════════════════════════
+  const btnValidarRuc = document.getElementById('btnValidarRuc');
+  const rucInput      = document.getElementById('editRuc');
+  const rucStatus     = document.getElementById('rucStatus');
+
+  if (btnValidarRuc) {
+    btnValidarRuc.addEventListener('click', function () {
+      const ruc = rucInput.value.trim();
+      if (!ruc) { rucStatus.innerHTML = '<span style="color:var(--error)">Ingresa un RUC primero.</span>'; return; }
+      btnValidarRuc.disabled = true;
+      btnValidarRuc.textContent = '⏳';
+      rucStatus.innerHTML = '<span style="color:var(--muted)">Consultando portal DGI...</span>';
+
+      fetch('/api/validar-ruc?ruc=' + encodeURIComponent(ruc))
+        .then(r => r.json())
+        .then(data => {
+          btnValidarRuc.disabled = false;
+          btnValidarRuc.textContent = '🔍 DGI';
+          if (data.fuente === 'error') {
+            rucStatus.innerHTML = '<span style="color:var(--accent3)">⚠ No se pudo conectar al portal DGI: ' + (data.error || '') + '</span>';
+          } else if (data.ok === true) {
+            const desde = data.fuente === 'cache' ? ' (caché)' : '';
+            const nombre = data.nombre ? ' — <strong style="color:var(--text)">' + data.nombre + '</strong>' : '';
+            rucStatus.innerHTML = '<span style="color:var(--success)">✓ RUC válido' + desde + nombre + '</span>';
+            // Si la DGI devolvió un nombre y el proveedor está vacío, sugerirlo
+            if (data.nombre && !document.getElementById('editProveedor').value.trim()) {
+              document.getElementById('editProveedor').value = data.nombre;
+            }
+          } else {
+            rucStatus.innerHTML = '<span style="color:var(--error)">✗ RUC no encontrado en DGI. Verifica el número.</span>';
+          }
+        })
+        .catch(() => {
+          btnValidarRuc.disabled = false;
+          btnValidarRuc.textContent = '🔍 DGI';
+          rucStatus.innerHTML = '<span style="color:var(--error)">Error de red al consultar DGI.</span>';
+        });
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // VERIFICACIÓN DE ITBMS EN TIEMPO REAL
+  // Se dispara al cambiar subtotal, itbms o descripción
+  // ══════════════════════════════════════════════════════════════
+  const itbmsInput    = document.getElementById('editItbms');
+  const subtotalInput = document.getElementById('editSubtotal');
+  const montoInput    = document.getElementById('editMonto');
+  const descInput     = document.getElementById('editDescripcion');
+  const itbmsStatus   = document.getElementById('itbmsStatus');
+
+  let _itbmsDebounce = null;
+  function verificarItbms() {
+    clearTimeout(_itbmsDebounce);
+    _itbmsDebounce = setTimeout(function () {
+      const subtotal    = parseFloat(subtotalInput.value) || 0;
+      const itbms       = parseFloat(itbmsInput.value)    || 0;
+      const montoTotal  = parseFloat(montoInput.value)    || 0;
+      const descripcion = descInput.value || '';
+      if (itbms === 0 && subtotal === 0) { itbmsStatus.innerHTML = ''; return; }
+
+      const params = new URLSearchParams({ subtotal, itbms, monto_total: montoTotal, descripcion });
+      fetch('/api/verificar-itbms?' + params)
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            itbmsStatus.innerHTML = '<span style="color:var(--success)">✓ ' + data.mensaje + '</span>';
+          } else {
+            itbmsStatus.innerHTML = '<span style="color:var(--accent3)">⚠ ' + data.mensaje + '</span>';
+          }
+        })
+        .catch(() => { itbmsStatus.innerHTML = ''; });
+    }, 600);  // debounce 600 ms
+  }
+
+  if (itbmsInput)    itbmsInput.addEventListener('input',    verificarItbms);
+  if (subtotalInput) subtotalInput.addEventListener('input',  verificarItbms);
+  if (descInput)     descInput.addEventListener('input',      verificarItbms);
+
   const banner  = document.getElementById('processingBanner');
   const bannerMsg = document.getElementById('processingMsg');
   let pollTimer = null;

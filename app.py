@@ -11,7 +11,10 @@ import sqlite3
 from datetime import timedelta, datetime
 
 from models import User, db_init
-from facturas_processor import procesar_cliente, get_rutas_cliente, exportar_dgi_csv
+from facturas_processor import (procesar_cliente, get_rutas_cliente,
+                                exportar_dgi_csv, validar_ruc_dgi,
+                                exportar_formulario103, calcular_itbms_esperado,
+                                verificar_itbms)
 
 app = Flask(__name__)
 
@@ -822,6 +825,117 @@ def download_excel():
         return send_file(rutas["excel"], as_attachment=True)
     flash("Aún no tienes facturas procesadas", "warning")
     return redirect(url_for("dashboard"))
+
+# ══════════════════════════════════════════════════════════════
+# VALIDACIÓN DE RUC CONTRA DGI — endpoint AJAX
+# Llamado desde el dashboard cuando el usuario escribe un RUC.
+# Devuelve JSON: {ok, nombre, error, fuente}
+# ══════════════════════════════════════════════════════════════
+@app.route("/api/validar-ruc")
+@login_required
+def api_validar_ruc():
+    ruc = request.args.get("ruc", "").strip()
+    if not ruc or len(ruc) > 30:
+        return jsonify({"ok": False, "nombre": "", "error": "RUC inválido", "fuente": "error"})
+
+    resultado = validar_ruc_dgi(ruc)
+    # Nunca devolver datos internos del servidor en el error
+    resultado.pop("ts", None)
+    return jsonify(resultado)
+
+
+# ══════════════════════════════════════════════════════════════
+# VERIFICACIÓN RÁPIDA DE ITBMS — endpoint AJAX
+# Recibe subtotal + itbms + descripcion, responde si el ITBMS es correcto.
+# ══════════════════════════════════════════════════════════════
+@app.route("/api/verificar-itbms")
+@login_required
+def api_verificar_itbms():
+    try:
+        subtotal    = float(request.args.get("subtotal", 0))
+        itbms       = float(request.args.get("itbms", 0))
+        monto_total = float(request.args.get("monto_total", 0))
+        descripcion = request.args.get("descripcion", "")[:200]
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Parámetros inválidos"})
+
+    esperado, tasa, categoria = calcular_itbms_esperado(subtotal, descripcion)
+    diferencia = abs(itbms - esperado)
+    ok = diferencia <= 0.02
+
+    return jsonify({
+        "ok":         ok,
+        "esperado":   round(esperado, 2),
+        "declarado":  round(itbms, 2),
+        "diferencia": round(diferencia, 2),
+        "tasa_pct":   int(tasa * 100),
+        "categoria":  categoria,
+        "mensaje":    (
+            f"ITBMS correcto ({int(tasa*100)}%)" if ok else
+            f"ITBMS posiblemente incorrecto: esperado B/.{esperado:.2f} "
+            f"({int(tasa*100)}% de B/.{subtotal:.2f}), declarado B/.{itbms:.2f}"
+        ),
+    })
+
+
+# ══════════════════════════════════════════════════════════════
+# FORMULARIO 103 — DESCARGA
+# Genera el F103 precompletado con las facturas aprobadas del cliente.
+# ══════════════════════════════════════════════════════════════
+@app.route("/download-formulario103")
+@login_required
+def download_formulario103():
+    periodo = request.args.get("periodo", "").strip()
+
+    if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
+        flash("Período inválido. Usa el formato YYYY-MM.", "danger")
+        return redirect(url_for("dashboard"))
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Aún no tienes facturas procesadas", "warning")
+        return redirect(url_for("dashboard"))
+
+    sufijo   = f"_{periodo}" if periodo else ""
+    f103_path = os.path.join(rutas["base"], f"formulario103{sufijo}.xlsx")
+
+    # RUC del cliente: buscamos en sus propias facturas como receptor, o dejamos vacío
+    ruc_empresa = ""
+    try:
+        with sqlite3.connect(rutas["db"]) as conn:
+            row = conn.execute(
+                "SELECT ruc_receptor FROM facturas WHERE ruc_receptor IS NOT NULL LIMIT 1"
+            ).fetchone()
+            if row:
+                ruc_empresa = row[0] or ""
+    except Exception:
+        pass
+
+    resultado = exportar_formulario103(
+        db_path       = rutas["db"],
+        output_path   = f103_path,
+        nombre_empresa= current_user.nombre,
+        ruc_empresa   = ruc_empresa,
+        periodo       = periodo or "",
+    )
+
+    if "error" in resultado:
+        flash(f"Error generando el Formulario 103: {resultado['error']}", "danger")
+        return redirect(url_for("dashboard"))
+
+    if resultado.get("total_proveedores", 0) == 0:
+        flash("No hay facturas aprobadas para incluir en el Formulario 103.", "warning")
+        return redirect(url_for("dashboard"))
+
+    flash(
+        f"Formulario 103 generado: {resultado['total_proveedores']} proveedores, "
+        f"Total compras B/.{resultado['total_compras']:,.2f}, "
+        f"ITBMS B/.{resultado['total_itbms']:,.2f}",
+        "success"
+    )
+    return send_file(f103_path, as_attachment=True,
+                     download_name=f"formulario103{sufijo}.xlsx")
+
 
 # ── LOGOUT ────────────────────────────────────────────────────
 @app.route("/logout")
