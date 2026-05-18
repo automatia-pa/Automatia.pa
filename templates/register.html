@@ -53,6 +53,7 @@
 
   <form method="POST">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="admin_key" value="{{ admin_key | default('') }}">
     <div class="form-group">
       <label>Nombre de empresa</label>
       <input type="text" name="nombre" placeholder="Ej: Cable Onda S.A." required>
