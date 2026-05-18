@@ -674,9 +674,11 @@ def editar_factura():
         except ValueError:
             return None
 
-    monto_total = parse_float("monto_total")
-    itbms       = parse_float("itbms")
-    subtotal    = parse_float("subtotal")
+    monto_total  = parse_float("monto_total")
+    itbms        = parse_float("itbms")
+    subtotal     = parse_float("subtotal")
+    itbms_retenido = parse_float("itbms_retenido")  # nuevo campo retención
+    es_agente_retencion = 1 if request.form.get("es_agente_retencion") else 0
 
     if not proveedor:
         flash("El proveedor no puede estar vacío", "danger")
@@ -702,13 +704,15 @@ def editar_factura():
         conn.execute("""
             UPDATE facturas
             SET proveedor=?, ruc=?, fecha=?, monto_total=?,
-                itbms=?, subtotal=?, moneda=?, categoria=?,
+                itbms=?, subtotal=?, itbms_retenido=?, es_agente_retencion=?,
+                moneda=?, categoria=?,
                 descripcion=?, confianza=100, fuente='manual',
                 fecha_procesamiento=?
             WHERE id=?
         """, (
             proveedor, ruc or None, fecha or None, monto_total,
-            itbms, subtotal, moneda, categoria,
+            itbms, subtotal, itbms_retenido, es_agente_retencion,
+            moneda, categoria,
             descripcion or None, datetime.now().isoformat(),
             factura_id
         ))

@@ -309,9 +309,51 @@ TASA_ITBMS_ALCOHOL   = 0.10
 TASA_ITBMS_TABACO    = 0.15
 TOLERANCIA_ITBMS     = 0.02   # ±2 centavos por redondeo
 
-_KEYWORDS_ALCOHOL = re.compile(r'\b(cerveza|licor|ron|whisky|vino|alcohol|beer|spirits)\b', re.IGNORECASE)
-_KEYWORDS_TABACO  = re.compile(r'\b(cigarro|cigarrillo|tabaco|tobacco|cigars?)\b', re.IGNORECASE)
-_KEYWORDS_EXENTO  = re.compile(r'\b(exento|exent[ao]s?|exempt|medicamento|medicine|alimento básico)\b', re.IGNORECASE)
+_KEYWORDS_ALCOHOL = re.compile(
+    r'\b(cerveza|licor|ron|whisky|whiskey|vodka|tequila|ginebra|brandy|cognac|'
+    r'aguardiente|vino|champagne|sidra|alcohol|beer|spirits|bebida\s*alcoh[oó]lica)\b',
+    re.IGNORECASE
+)
+_KEYWORDS_TABACO  = re.compile(
+    r'\b(cigarro|cigarrillo|tabaco|tobacco|cigars?|puro|'
+    r'producto\s*de\s*tabaco|cigarros?)\b',
+    re.IGNORECASE
+)
+# ── Exenciones según Art. 1057-V del Código Fiscal de Panamá
+# y Decreto Ejecutivo 84 de 2005 ─────────────────────────────
+# Cubre: medicamentos, alimentos básicos de la canasta básica,
+# servicios médicos/hospitalarios, educación, seguros de vida,
+# exportaciones de servicios, transporte internacional de carga,
+# arrendamiento de vivienda, servicios de agua y electricidad
+# para uso residencial, y otros exonerados expresamente.
+_KEYWORDS_EXENTO  = re.compile(
+    r'\b('
+    # Medicamentos y salud
+    r'exento|exent[ao]s?|exempt|tasa\s*0|0%\s*itbms|itbms\s*0|'
+    r'medicamento|medicina|farmac[eé]utico|f[aá]rmaco|'
+    r'servicio\s*m[eé]dico|consulta\s*m[eé]dica|hospitali[sz]aci[oó]n|'
+    r'laboratorio\s*cl[ií]nico|rx|radiolog[ií]a|odontolog[ií]a|'
+    # Alimentos básicos canasta básica
+    r'alimento\s*b[aá]sico|canasta\s*b[aá]sica|arroz|frijol(es)?|'
+    r'leche|huevo|az[uú]car|sal\s+comun|harina\s+de\s+ma[ií]z|'
+    r'aceite\s+vegetal|sardina\s+en\s+lata|'
+    # Educación
+    r'matr[ií]cula|mensualidad\s+escolar|colegio|universidad|'
+    r'educaci[oó]n|ense[ñn]anza|capacitaci[oó]n\s+acad[eé]mica|'
+    # Seguros de vida
+    r'seguro\s+de\s+vida|p[oó]liza\s+de\s+vida|'
+    # Transporte internacional
+    r'flete\s+internacional|transporte\s+internacional|carga\s+internacional|'
+    r'exportaci[oó]n\s+de\s+servicio|'
+    # Arrendamiento residencial
+    r'alquiler\s+residencial|arrendamiento\s+de\s+vivienda|'
+    # Agua y electricidad residencial
+    r'consumo\s+residencial\s+de\s+agua|consumo\s+residencial\s+de\s+electricidad|'
+    # Combustible - gasolina / diesel exentos según decreto
+    r'combustible\s+para\s+exportaci[oó]n'
+    r')\b',
+    re.IGNORECASE
+)
 
 def calcular_itbms_esperado(subtotal: float, descripcion: str = "") -> tuple:
     """
@@ -337,6 +379,7 @@ def calcular_itbms_esperado(subtotal: float, descripcion: str = "") -> tuple:
 def verificar_itbms(datos: dict) -> list:
     """
     Verifica que el ITBMS declarado sea consistente con el subtotal.
+    También detecta si hay retención de ITBMS (Ley 76 de 2009).
     Retorna lista de advertencias (vacía si todo está bien).
     """
     advertencias = []
@@ -383,6 +426,33 @@ def verificar_itbms(datos: dict) -> list:
                     f"= {suma:.2f} ≠ monto_total ({monto_total:.2f}). "
                     f"Diferencia: B/.{dif_total:.2f}"
                 )
+
+        # ── RETENCIÓN DE ITBMS (Ley 76 de 2009 / Art. 1057-V CF) ────────────
+        # Cuando el comprador es agente de retención designado por la DGI,
+        # retiene el 50% del ITBMS (tasa general) al pagar al proveedor.
+        # El campo itbms_retenido en datos indica si el proveedor reportó
+        # haber sufrido retención.
+        TASA_RETENCION = 0.50  # 50% del ITBMS según Ley 76/2009
+        itbms_retenido = datos.get("itbms_retenido")
+        if itbms_retenido is not None:
+            try:
+                itbms_retenido = float(itbms_retenido)
+                retencion_esperada = round(itbms * TASA_RETENCION, 2)
+                dif_ret = abs(itbms_retenido - retencion_esperada)
+                if itbms_retenido > itbms:
+                    advertencias.append(
+                        f"⚠ Retención ITBMS ({itbms_retenido:.2f}) supera el ITBMS total "
+                        f"({itbms:.2f}). Verificar."
+                    )
+                elif dif_ret > TOLERANCIA_ITBMS and itbms_retenido > 0:
+                    advertencias.append(
+                        f"ℹ Retención ITBMS: B/.{itbms_retenido:.2f} declarada. "
+                        f"La retención estándar (50%) sería B/.{retencion_esperada:.2f}. "
+                        f"Puede ser retención parcial o tasa especial — verificar."
+                    )
+            except (TypeError, ValueError):
+                pass
+
     except (TypeError, ValueError):
         pass
 
@@ -500,7 +570,12 @@ def init_db(db_path):
                 comentario_estado TEXT,
                 fecha_estado TEXT,
                 fecha_procesamiento TEXT,
-                advertencias_fiscales TEXT
+                advertencias_fiscales TEXT,
+                -- ── RETENCIÓN DE ITBMS (Ley 76/2009, Art. 1057-V CF) ──────
+                -- itbms_retenido: monto retenido por el comprador (agente de retención)
+                -- es_agente_retencion: 1 si el proveedor nos retiene el ITBMS
+                itbms_retenido REAL DEFAULT NULL,
+                es_agente_retencion INTEGER DEFAULT 0
             )
         ''')
 
@@ -528,7 +603,10 @@ def init_db(db_path):
                 comentario_estado TEXT,
                 fecha_estado TEXT,
                 fecha_procesamiento TEXT,
-                advertencias_fiscales TEXT
+                advertencias_fiscales TEXT,
+                -- ── RETENCIÓN DE ITBMS ────────────────────────────────────
+                itbms_retenido REAL DEFAULT NULL,
+                es_agente_retencion INTEGER DEFAULT 0
             )
         ''')
         # Migración por si la tabla ya existía sin alguna columna
@@ -538,6 +616,8 @@ def init_db(db_path):
             ('advertencias_fiscales', 'TEXT'),
             ('comentario_estado',     'TEXT'),
             ('fecha_estado',          'TEXT'),
+            ('itbms_retenido',        'REAL DEFAULT NULL'),
+            ('es_agente_retencion',   'INTEGER DEFAULT 0'),
         ]
         for col, tipo in nuevas_ventas:
             try:
@@ -557,7 +637,9 @@ def init_db(db_path):
             ('estado',                 'TEXT DEFAULT "pendiente"'),
             ('comentario_estado',      'TEXT'),
             ('fecha_estado',           'TEXT'),
-            ('advertencias_fiscales',  'TEXT'),  # ← nueva columna
+            ('advertencias_fiscales',  'TEXT'),
+            ('itbms_retenido',         'REAL DEFAULT NULL'),
+            ('es_agente_retencion',    'INTEGER DEFAULT 0'),
         ]
         for col, tipo in nuevas_columnas:
             try:
@@ -577,6 +659,8 @@ COLUMNAS_EXCEL = [
     ("monto_total",           "Monto Total"),
     ("subtotal",              "Subtotal"),
     ("itbms",                 "ITBMS"),
+    ("itbms_retenido",        "ITBMS Retenido"),
+    ("es_agente_retencion",   "Agente Retención"),
     ("moneda",                "Moneda"),
     ("categoria",             "Categoría"),
     ("tipo_doc",              "Tipo Documento"),
@@ -586,7 +670,7 @@ COLUMNAS_EXCEL = [
     ("cufe",                  "CUFE"),
     ("fuente",                "Fuente"),
     ("confianza",             "Confianza %"),
-    ("advertencias_fiscales", "⚠ Advertencias"),   # ← nueva columna en Excel
+    ("advertencias_fiscales", "⚠ Advertencias"),
     ("modelo_usado",          "Modelo"),
     ("fecha_procesamiento",   "Fecha Procesado"),
 ]
@@ -977,25 +1061,74 @@ def procesar_cliente_ventas(nombre_cliente: str, procesadas: set):
 
 
 def exportar_dgi_csv(db_path, csv_path, periodo=None):
-    """CSV formato DGI Panamá — solo facturas aprobadas."""
+    """
+    CSV formato DGI Panamá para importación en e-Tax 2.0 — solo facturas aprobadas.
+
+    ══════════════════════════════════════════════════════════════
+    FORMATO OFICIAL DGI — DECLARACIÓN DE ITBMS (F-430)
+    Portal: etax2.mef.gob.pa → Declaraciones → ITBMS → Importar
+
+    Columnas requeridas por la DGI (en este orden exacto):
+      1. RUC_Proveedor       — RUC del emisor de la factura
+      2. Nombre_Proveedor    — Razón social del emisor
+      3. Tipo_Documento      — Código según DGI (01=Factura, 02=NC, 03=ND, 04=FI, 08=FE)
+      4. Numero_Documento    — Número de la factura o CUFE si es electrónica
+      5. Fecha_Emision       — DD/MM/AAAA (formato requerido por el portal)
+      6. Subtotal            — Base imponible sin ITBMS, 2 decimales
+      7. ITBMS               — Monto del impuesto, 2 decimales
+      8. Total_Factura       — Monto total con impuesto, 2 decimales
+      9. Tipo_Compra         — "LOCAL" | "IMPORTACION" (requerido por F430)
+     10. ITBMS_Retenido      — Monto retenido por agente, 0.00 si no aplica
+
+    Separador: coma. Codificación: UTF-8 con BOM (requerido por e-Tax 2.0).
+    Primera línea: "sep=," (instrucción para Excel en español).
+    ══════════════════════════════════════════════════════════════
+    """
+    import csv
+
+    # Códigos de tipo de documento → etiqueta DGI
+    _TIPO_DOC_CODIGO = {
+        'Factura':              '01',
+        'Nota de Crédito':     '02',
+        'Nota de Débito':      '03',
+        'Factura de Importación': '04',
+        'Factura de Exportación': '08',
+    }
+
+    def _normalizar_fecha(fecha_str):
+        """
+        Normaliza cualquier fecha al formato DD/MM/AAAA requerido por e-Tax.
+        Acepta: DD/MM/AAAA (nativo), AAAA-MM-DD (ISO de XML e-Tax).
+        """
+        if not fecha_str:
+            return ""
+        fecha_str = str(fecha_str).strip()
+        # ISO: AAAA-MM-DD
+        m = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', fecha_str)
+        if m:
+            return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+        # Ya en DD/MM/AAAA
+        if re.match(r'^\d{2}/\d{2}/\d{4}$', fecha_str):
+            return fecha_str
+        return fecha_str  # devolver tal cual si formato desconocido
+
     try:
         with sqlite3.connect(db_path) as conn:
             query = """
                 SELECT
-                    ruc          AS RUC_Proveedor,
-                    proveedor    AS Nombre_Proveedor,
-                    tipo_doc     AS Tipo_Documento,
+                    COALESCE(ruc, '')           AS ruc_prov,
+                    COALESCE(proveedor, '')     AS nombre_prov,
+                    COALESCE(tipo_doc, 'Factura') AS tipo_doc,
                     COALESCE(
-                        NULLIF(TRIM(cufe),  ''),
+                        NULLIF(TRIM(cufe), ''),
                         NULLIF(TRIM(archivo), '')
-                    )            AS Numero_Documento,
-                    cufe         AS CUFE,
-                    fecha        AS Fecha_Emision,
-                    COALESCE(subtotal, monto_total - COALESCE(itbms, 0)) AS Subtotal,
-                    COALESCE(itbms, 0) AS ITBMS_7pct,
-                    monto_total  AS Total_Factura,
-                    moneda       AS Moneda,
-                    categoria    AS Categoria
+                    )                           AS numero_doc,
+                    COALESCE(fecha, '')         AS fecha,
+                    COALESCE(subtotal,
+                        monto_total - COALESCE(itbms, 0)) AS subtotal,
+                    COALESCE(itbms, 0)          AS itbms,
+                    monto_total                 AS total,
+                    COALESCE(itbms_retenido, 0) AS retenido
                 FROM facturas
                 WHERE estado = 'aprobada'
             """
@@ -1007,29 +1140,52 @@ def exportar_dgi_csv(db_path, csv_path, periodo=None):
             query += " ORDER BY fecha ASC"
 
             rows = conn.execute(query, params).fetchall()
-            if not rows:
-                return 0
+            col_names = [d[0] for d in conn.execute(query + " LIMIT 0", params).description] \
+                if False else ["ruc_prov","nombre_prov","tipo_doc","numero_doc",
+                               "fecha","subtotal","itbms","total","retenido"]
 
-            cols = ["RUC_Proveedor", "Nombre_Proveedor", "Tipo_Documento",
-                    "Numero_Documento", "CUFE", "Fecha_Emision",
-                    "Subtotal", "ITBMS_7pct", "Total_Factura", "Moneda", "Categoria"]
+        if not rows:
+            return 0
 
-        import csv
+        # Cabeceras oficiales DGI e-Tax 2.0
+        CABECERAS = [
+            "RUC_Proveedor", "Nombre_Proveedor", "Tipo_Documento",
+            "Numero_Documento", "Fecha_Emision",
+            "Subtotal", "ITBMS", "Total_Factura",
+            "Tipo_Compra", "ITBMS_Retenido"
+        ]
+
         with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
             f.write("sep=,\n")
-            writer = csv.writer(f)
-            writer.writerow(cols)
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(CABECERAS)
+
             for row in rows:
-                formatted = list(row)
-                for i, col in enumerate(cols):
-                    if col in ("Subtotal", "ITBMS_7pct", "Total_Factura"):
-                        try:
-                            formatted[i] = f"{float(row[i] or 0):.2f}"
-                        except (TypeError, ValueError):
-                            formatted[i] = "0.00"
-                writer.writerow(formatted)
+                (ruc_prov, nombre_prov, tipo_doc_str, numero_doc,
+                 fecha, subtotal, itbms, total, retenido) = row
+
+                # Tipo de compra: importación si el tipo_doc es Factura de Importación
+                tipo_compra = "IMPORTACION" if "importaci" in str(tipo_doc_str).lower() \
+                              else "LOCAL"
+
+                # Código numérico del tipo de documento
+                tipo_cod = _TIPO_DOC_CODIGO.get(tipo_doc_str, '01')
+
+                writer.writerow([
+                    ruc_prov or "",
+                    nombre_prov or "",
+                    tipo_cod,
+                    numero_doc or "",
+                    _normalizar_fecha(fecha),
+                    f"{float(subtotal or 0):.2f}",
+                    f"{float(itbms  or 0):.2f}",
+                    f"{float(total  or 0):.2f}",
+                    tipo_compra,
+                    f"{float(retenido or 0):.2f}",
+                ])
 
         return len(rows)
+
     except Exception as e:
         slog("error", "Error exportando CSV DGI: {}", str(e))
         return 0
@@ -1441,10 +1597,11 @@ def guardar_factura(db_path, datos, archivo, modelo):
             conn.execute('''
                 INSERT INTO facturas
                 (archivo, hash, proveedor, ruc, receptor, ruc_receptor, fecha,
-                 monto_total, subtotal, itbms, moneda, descripcion, categoria,
+                 monto_total, subtotal, itbms, itbms_retenido, es_agente_retencion,
+                 moneda, descripcion, categoria,
                  confianza, modelo_usado, notas, cufe, tipo_doc, fuente,
                  estado, fecha_procesamiento, advertencias_fiscales)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
             ''', (
                 archivo,
                 datos.get('hash'),
@@ -1456,6 +1613,8 @@ def guardar_factura(db_path, datos, archivo, modelo):
                 float(datos.get('monto_total', 0)),
                 float(datos.get('subtotal', 0)) if datos.get('subtotal') else None,
                 float(datos.get('itbms', 0))    if datos.get('itbms')    else None,
+                float(datos.get('itbms_retenido', 0)) if datos.get('itbms_retenido') else None,
+                int(bool(datos.get('es_agente_retencion', False))),
                 datos.get('moneda', 'USD'),
                 datos.get('descripcion'),
                 categoria,
@@ -1553,9 +1712,15 @@ def exportar_reporte_compras_f430(db_path: str, output_path: str,
                     SUM(COALESCE(subtotal,
                         monto_total - COALESCE(itbms, 0)))        AS total_subtotal,
                     SUM(COALESCE(itbms, 0))                       AS total_itbms,
+                    SUM(COALESCE(itbms_retenido, 0))              AS total_retenido,
                     COUNT(*)                                      AS num_facturas,
                     MAX(fecha)                                    AS ultima_fecha,
-                    categoria
+                    categoria,
+                    -- Separar compras locales vs importaciones (requerido F430)
+                    SUM(CASE WHEN LOWER(COALESCE(tipo_doc,'')) LIKE '%importaci%'
+                             THEN monto_total ELSE 0 END)         AS total_importacion,
+                    SUM(CASE WHEN LOWER(COALESCE(tipo_doc,'')) NOT LIKE '%importaci%'
+                             THEN monto_total ELSE 0 END)         AS total_local
                 FROM facturas
                 WHERE estado = 'aprobada'
             """
@@ -1632,15 +1797,18 @@ def exportar_reporte_compras_f430(db_path: str, output_path: str,
     c.alignment = Alignment(horizontal="left", vertical="center")
 
     COLS_B = [
-        ("N°",                   5),
-        ("RUC del Proveedor",   18),
+        ("N°",                    5),
+        ("RUC del Proveedor",    18),
         ("Nombre / Razón Social", 32),
-        ("Categoría",           18),
-        ("N° Facturas",         12),
-        ("Última Fecha",        14),
+        ("Categoría",            16),
+        ("N° Facturas",          12),
+        ("Última Fecha",         14),
         ("Base Imponible\n(Subtotal)", 18),
-        ("ITBMS\nCrédito Fiscal", 18),
-        ("Total\nCompras",      16),
+        ("ITBMS\nCrédito Fiscal", 16),
+        ("ITBMS\nRetenido",      14),
+        ("Compras\nLocales",     14),
+        ("Compras\nImportación", 16),
+        ("Total\nCompras",       16),
     ]
     ROW_HDR = ROW_B + 1
     for ci, (label, _) in enumerate(COLS_B, 1):
@@ -1660,49 +1828,63 @@ def exportar_reporte_compras_f430(db_path: str, output_path: str,
         r = ROW_HDR + idx
         bg = BLANCO if idx % 2 == 0 else GRIS_SUAVE
 
-        tc  = float(row["total_compras"]  or 0)
-        ti  = float(row["total_itbms"]    or 0)
-        ts  = float(row["total_subtotal"] or 0)
+        tc   = float(row["total_compras"]    or 0)
+        ti   = float(row["total_itbms"]      or 0)
+        ts   = float(row["total_subtotal"]   or 0)
+        tret = float(row["total_retenido"]   or 0)
+        tloc = float(row["total_local"]      or 0)
+        timp = float(row["total_importacion"] or 0)
 
         total_compras   += tc
         total_itbms_sum += ti
         total_subtotal  += ts
 
-        data_cell(ws, r, 1,  idx,                            align="center", bg=bg)
-        data_cell(ws, r, 2,  row["ruc"] or "SIN RUC",       bg=bg)
-        data_cell(ws, r, 3,  row["proveedor"] or "",         bg=bg)
-        data_cell(ws, r, 4,  row["categoria"] or "Otros",    bg=bg)
-        data_cell(ws, r, 5,  row["num_facturas"],            align="center", bg=bg)
-        data_cell(ws, r, 6,  row["ultima_fecha"] or "",      align="center", bg=bg)
-        data_cell(ws, r, 7,  ts,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
-        data_cell(ws, r, 8,  ti,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
-        data_cell(ws, r, 9,  tc,  fmt='#,##0.00 "B/."',     align="right", bg=bg)
+        data_cell(ws, r,  1,  idx,                            align="center", bg=bg)
+        data_cell(ws, r,  2,  row["ruc"] or "SIN RUC",       bg=bg)
+        data_cell(ws, r,  3,  row["proveedor"] or "",         bg=bg)
+        data_cell(ws, r,  4,  row["categoria"] or "Otros",    bg=bg)
+        data_cell(ws, r,  5,  row["num_facturas"],            align="center", bg=bg)
+        data_cell(ws, r,  6,  row["ultima_fecha"] or "",      align="center", bg=bg)
+        data_cell(ws, r,  7,  ts,   fmt='#,##0.00 "B/."',    align="right",  bg=bg)
+        data_cell(ws, r,  8,  ti,   fmt='#,##0.00 "B/."',    align="right",  bg=bg)
+        data_cell(ws, r,  9,  tret, fmt='#,##0.00 "B/."',    align="right",  bg=bg)
+        data_cell(ws, r, 10,  tloc, fmt='#,##0.00 "B/."',    align="right",  bg=bg)
+        data_cell(ws, r, 11,  timp, fmt='#,##0.00 "B/."',    align="right",  bg=bg)
+        data_cell(ws, r, 12,  tc,   fmt='#,##0.00 "B/."',    align="right",  bg=bg)
 
     # ── SECCIÓN C — TOTALES ───────────────────────────────────
     ROW_TOT = ROW_HDR + len(rows) + 2
-    ws.merge_cells(f"A{ROW_TOT}:I{ROW_TOT}")
+    ws.merge_cells(f"A{ROW_TOT}:L{ROW_TOT}")
     c = ws.cell(row=ROW_TOT, column=1, value="SECCIÓN C — TOTALES")
     c.font = Font(bold=True, size=10, color="FFFFFF")
     c.fill = PatternFill("solid", fgColor="2E86C1")
     c.alignment = Alignment(horizontal="left", vertical="center")
 
+    # Sumar totales de retención y split local/importación
+    total_retenido_sum  = sum(float(row["total_retenido"]    or 0) for row in rows)
+    total_local_sum     = sum(float(row["total_local"]       or 0) for row in rows)
+    total_importacion_sum = sum(float(row["total_importacion"] or 0) for row in rows)
+
     tot_labels = [
-        ("Total Proveedores / Suplidores:",  len(rows),           None),
-        ("Total Base Imponible (Subtotal):", total_subtotal,  '#,##0.00 "B/."'),
-        ("Total ITBMS Crédito Fiscal:",      total_itbms_sum, '#,##0.00 "B/."'),
-        ("TOTAL GENERAL COMPRAS:",           total_compras,   '#,##0.00 "B/."'),
+        ("Total Proveedores / Suplidores:",     len(rows),                None),
+        ("Total Base Imponible (Subtotal):",    total_subtotal,       '#,##0.00 "B/."'),
+        ("Total ITBMS Crédito Fiscal:",         total_itbms_sum,      '#,##0.00 "B/."'),
+        ("Total ITBMS Retenido (Ley 76/2009):", total_retenido_sum,   '#,##0.00 "B/."'),
+        ("Total Compras Locales:",              total_local_sum,      '#,##0.00 "B/."'),
+        ("Total Compras Importación:",          total_importacion_sum,'#,##0.00 "B/."'),
+        ("TOTAL GENERAL COMPRAS:",              total_compras,        '#,##0.00 "B/."'),
     ]
     for ti_idx, (label, val, fmt) in enumerate(tot_labels):
         r = ROW_TOT + 1 + ti_idx
-        ws.merge_cells(f"A{r}:F{r}")
+        ws.merge_cells(f"A{r}:H{r}")
         lc = ws.cell(row=r, column=1, value=label)
         lc.font = Font(bold=True, size=10)
         lc.fill = PatternFill("solid", fgColor=AMARILLO)
         lc.alignment = Alignment(horizontal="right", vertical="center")
         lc.border = borde
 
-        ws.merge_cells(f"G{r}:I{r}")
-        vc = ws.cell(row=r, column=7, value=val)
+        ws.merge_cells(f"I{r}:L{r}")
+        vc = ws.cell(row=r, column=9, value=val)
         vc.font = Font(bold=True, size=10)
         vc.fill = PatternFill("solid", fgColor=AMARILLO)
         vc.alignment = Alignment(horizontal="right", vertical="center")
@@ -1712,19 +1894,23 @@ def exportar_reporte_compras_f430(db_path: str, output_path: str,
 
     # ── NOTA LEGAL CORRECTA ────────────────────────────────────
     ROW_NOTA = ROW_TOT + len(tot_labels) + 2
-    ws.merge_cells(f"A{ROW_NOTA}:I{ROW_NOTA}")
+    ws.merge_cells(f"A{ROW_NOTA}:L{ROW_NOTA}")
     nota = (
         "NOTA: Reporte generado por AutomatIA como apoyo contable. "
-        "El ITBMS Crédito Fiscal corresponde al impuesto soportado en compras "
-        "aprobadas, deducible del débito fiscal según el Art. 1057-V del Código Fiscal "
-        "y el Decreto Ejecutivo 84 de 2005. "
+        "El ITBMS Crédito Fiscal corresponde al impuesto soportado en compras aprobadas, "
+        "deducible del débito fiscal según el Art. 1057-V del Código Fiscal y el Decreto Ejecutivo 84 de 2005. "
+        "El ITBMS Retenido aplica cuando el comprador es agente de retención designado por la DGI "
+        "(Ley 76 de 2009 — retención del 50% del ITBMS). "
+        "Las compras de Importación tienen tratamiento diferente en el Formulario 430; "
+        "verifíquelas con su contador antes de declarar. "
+        "Conserve los documentos originales por un mínimo de 5 años (Art. 756 del Código Fiscal). "
         "Verifique y complete la declaración oficial en el portal e-Tax 2.0 (etax2.mef.gob.pa). "
-        "Este documento no reemplaza ningún formulario oficial de la DGI."
+        "Este documento NO reemplaza ningún formulario oficial de la DGI."
     )
     nc = ws.cell(row=ROW_NOTA, column=1, value=nota)
     nc.font = Font(italic=True, size=8, color="555555")
     nc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-    ws.row_dimensions[ROW_NOTA].height = 40
+    ws.row_dimensions[ROW_NOTA].height = 52
 
     try:
         wb.save(output_path)
