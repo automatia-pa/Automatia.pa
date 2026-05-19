@@ -282,6 +282,48 @@
     </form>
   </div>
 
+  <!-- REPORTE F430 VENTAS -->
+  <div class="upload-section" style="margin-bottom:2rem;">
+    <h2>📋 Formulario F430 — Reporte de Ventas (ITBMS Débito Fiscal)</h2>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:1.5rem;line-height:1.6;">
+      Genera el reporte de tus ventas aprobadas en formato Excel para apoyar la declaración
+      del ITBMS débito fiscal ante la DGI (e-Tax 2.0). Filtra por período o descarga el acumulado total.
+    </p>
+    <form method="POST" action="/ventas/exportar-f430">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:1rem;align-items:end;flex-wrap:wrap;">
+        <div>
+          <label style="display:block;font-size:0.78rem;font-weight:500;color:var(--muted);margin-bottom:0.4rem;letter-spacing:0.04em;text-transform:uppercase;">
+            RUC de tu empresa
+          </label>
+          <input type="text" name="ruc_empresa" placeholder="Ej: 8-123-456 o J-12345678-3"
+                 style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:0.65rem 1rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;outline:none;"
+                 maxlength="30">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.78rem;font-weight:500;color:var(--muted);margin-bottom:0.4rem;letter-spacing:0.04em;text-transform:uppercase;">
+            Período (opcional)
+          </label>
+          <input type="month" name="periodo" value="{{ periodo }}"
+                 style="width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:0.65rem 1rem;color:var(--text);font-family:'DM Sans',sans-serif;font-size:0.9rem;outline:none;color-scheme:dark;">
+        </div>
+        <div>
+          <button type="submit"
+                  style="background:var(--accent);color:#030F0D;border:none;border-radius:100px;padding:0.7rem 1.5rem;font-size:0.88rem;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;transition:opacity 0.2s;"
+                  onmouseover="this.style.opacity=0.85" onmouseout="this.style.opacity=1">
+            ↓ Generar F430 Ventas
+          </button>
+        </div>
+      </div>
+      <p style="font-size:0.75rem;color:var(--muted);margin-top:0.85rem;">
+        ⚠ Documento de apoyo interno — No es un formulario oficial DGI. Ingresa los datos en
+        <a href="https://etax2.mef.gob.pa" target="_blank" rel="noopener"
+           style="color:var(--accent);text-decoration:none;">e-Tax 2.0</a> al declarar.
+        Solo incluye ventas con estado <strong style="color:var(--accent)">aprobada</strong>.
+      </p>
+    </form>
+  </div>
+
   <!-- TABLA VENTAS -->
   <div class="table-section">
     <div class="table-header">

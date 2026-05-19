@@ -14,6 +14,7 @@ from models import User, db_init
 from facturas_processor import (procesar_cliente, procesar_cliente_ventas,
                                 get_rutas_cliente, exportar_dgi_csv,
                                 validar_ruc_dgi, exportar_reporte_compras_f430,
+                                exportar_reporte_ventas_f430,
                                 calcular_itbms_esperado, verificar_itbms,
                                 listar_ventas, cruce_iva, exportar_excel_ventas,
                                 exportar_excel)
@@ -513,6 +514,106 @@ def register():
     # para que el formulario la incluya como campo oculto en el POST.
     admin_key_url = request.args.get("key", "")
     return render_template("register.html", admin_key=admin_key_url)
+
+# ── RECUPERAR CONTRASEÑA ─────────────────────────────────────
+# En PythonAnywhere sin SMTP propio, el "correo" se muestra en pantalla
+# (modo demo) o se envía si SMTP_* está configurado en las variables de
+# entorno.  Para producción real agrega SMTP_HOST, SMTP_PORT, SMTP_USER,
+# SMTP_PASS y cambia SITE_URL al dominio real.
+
+import smtplib
+from email.mime.text import MIMEText
+
+_SITE_URL   = os.environ.get("SITE_URL", "https://tuapp.pythonanywhere.com")
+_SMTP_HOST  = os.environ.get("SMTP_HOST", "")
+_SMTP_PORT  = int(os.environ.get("SMTP_PORT", "587"))
+_SMTP_USER  = os.environ.get("SMTP_USER", "")
+_SMTP_PASS  = os.environ.get("SMTP_PASS", "")
+_FROM_EMAIL = os.environ.get("FROM_EMAIL", _SMTP_USER)
+
+def _send_reset_email(to_email: str, token: str) -> bool:
+    """Intenta enviar el correo de recuperación. Retorna True si lo logra."""
+    link = f"{_SITE_URL}/reset-password/{token}"
+    body = (
+        f"Hola,\n\nRecibiste este correo porque solicitaste recuperar tu contraseña en AutomatIA.\n\n"
+        f"Haz clic en el siguiente enlace para crear una nueva contraseña (válido por 1 hora):\n\n"
+        f"{link}\n\n"
+        f"Si no solicitaste esto, ignora este mensaje. Tu contraseña no cambiará.\n\n"
+        f"— AutomatIA"
+    )
+    if not _SMTP_HOST or not _SMTP_USER:
+        # Sin SMTP configurado: log el link para depuración en PythonAnywhere
+        import logging
+        logging.warning(f"[RESET] Link para {to_email}: {link}")
+        return False
+    try:
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = "Recuperar contraseña — AutomatIA"
+        msg["From"]    = _FROM_EMAIL
+        msg["To"]      = to_email
+        with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=10) as s:
+            s.ehlo()
+            s.starttls()
+            s.login(_SMTP_USER, _SMTP_PASS)
+            s.sendmail(_FROM_EMAIL, [to_email], msg.as_string())
+        return True
+    except Exception as e:
+        import logging
+        logging.error(f"[RESET] Error SMTP: {e}")
+        return False
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    if request.method == "POST":
+        validate_csrf()
+        email = request.form.get("email", "").strip().lower()
+        if email:
+            token = User.create_reset_token(email)
+            if token:
+                sent = _send_reset_email(email, token)
+                # Si no hay SMTP, mostramos el link directamente (modo dev/demo)
+                if not sent and (not _SMTP_HOST or not _SMTP_USER):
+                    link = f"{_SITE_URL}/reset-password/{token}"
+                    flash(
+                        f"⚠ SMTP no configurado. Link de recuperación (solo visible en dev): "
+                        f"<a href='{link}' style='color:var(--accent)'>{link}</a>",
+                        "warning"
+                    )
+                    return render_template("forgot_password.html")
+        # Siempre el mismo mensaje (anti-enumeración de emails)
+        flash("Si ese correo está registrado, recibirás un enlace para recuperar tu contraseña.", "success")
+        return redirect(url_for("login"))
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    user_id = User.validate_reset_token(token)
+    if not user_id:
+        flash("El enlace de recuperación no es válido o ha expirado.", "danger")
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        validate_csrf()
+        password  = request.form.get("password", "")
+        password2 = request.form.get("password2", "")
+        if len(password) < 10:
+            flash("La contraseña debe tener al menos 10 caracteres.", "danger")
+            return render_template("reset_password.html", token=token)
+        if password != password2:
+            flash("Las contraseñas no coinciden.", "danger")
+            return render_template("reset_password.html", token=token)
+        if User.consume_reset_token(token, password):
+            flash("✅ Contraseña actualizada exitosamente. Inicia sesión.", "success")
+            return redirect(url_for("login"))
+        flash("El enlace expiró. Solicita uno nuevo.", "danger")
+        return redirect(url_for("forgot_password"))
+    return render_template("reset_password.html", token=token)
+
 
 # ── DASHBOARD ─────────────────────────────────────────────────
 @app.route("/dashboard")
@@ -1169,6 +1270,53 @@ def download_excel_ventas():
                          download_name="ventas.xlsx")
     flash("Aún no tienes ventas procesadas", "warning")
     return redirect(url_for("ventas"))
+
+
+# ── EXPORTAR F430 VENTAS ──────────────────────────────────────
+@app.route("/ventas/exportar-f430", methods=["POST"])
+@login_required
+def exportar_f430_ventas():
+    validate_csrf()
+    rutas = get_rutas_cliente(current_user.nombre)
+    if not os.path.exists(rutas["db"]):
+        flash("Aún no tienes ventas registradas.", "warning")
+        return redirect(url_for("ventas"))
+
+    ruc_empresa = request.form.get("ruc_empresa", "").strip()[:30]
+    periodo     = request.form.get("periodo", "").strip()
+    if periodo and not re.match(r'^\d{4}-\d{2}$', periodo):
+        periodo = ""
+
+    # Guardar el reporte en la carpeta del cliente
+    nombre_archivo = f"f430_ventas{'_' + periodo if periodo else ''}.xlsx"
+    output_path    = os.path.join(rutas["ventas"], nombre_archivo)
+
+    resultado = exportar_reporte_ventas_f430(
+        db_path        = rutas["db"],
+        output_path    = output_path,
+        nombre_empresa = current_user.nombre,
+        ruc_empresa    = ruc_empresa,
+        periodo        = periodo,
+    )
+
+    if "error" in resultado:
+        flash(f"Error generando el reporte: {resultado['error']}", "danger")
+        return redirect(url_for("ventas"))
+
+    if resultado["total_clientes"] == 0:
+        flash(
+            f"No hay ventas aprobadas{'  para ' + periodo if periodo else ''}. "
+            "Aprueba al menos una venta antes de generar el reporte.",
+            "warning"
+        )
+        return redirect(url_for("ventas"))
+
+    return send_file(
+        output_path,
+        as_attachment=True,
+        download_name=nombre_archivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 
 @app.route("/api/cruce-iva")

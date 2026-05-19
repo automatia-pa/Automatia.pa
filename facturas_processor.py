@@ -1926,6 +1926,217 @@ def exportar_reporte_compras_f430(db_path: str, output_path: str,
     }
 
 
+def exportar_reporte_ventas_f430(db_path: str, output_path: str,
+                                  nombre_empresa: str, ruc_empresa: str = "",
+                                  periodo: str = "") -> dict:
+    """
+    Genera un reporte de VENTAS para apoyar la declaración del
+    ITBMS débito fiscal (F-430 lado ventas) como archivo Excel.
+
+    Args:
+        db_path:        Ruta a la base de datos SQLite del cliente.
+        output_path:    Ruta de salida del archivo .xlsx.
+        nombre_empresa: Nombre o razón social del declarante.
+        ruc_empresa:    RUC del declarante (opcional).
+        periodo:        'YYYY-MM' para filtrar por mes, o '' para todo.
+
+    Returns:
+        dict con claves: total_clientes, total_ventas, total_itbms, ruta
+    """
+    from openpyxl.styles import (Font, PatternFill, Alignment,
+                                 Border, Side)
+    from openpyxl.utils import get_column_letter
+
+    AZUL_DGI  = "1A5276"
+    GRIS      = "D5D8DC"
+    AMARILLO  = "FCF3CF"
+    BLANCO    = "FFFFFF"
+
+    thin  = Side(style="thin", color="AAAAAA")
+    borde = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def hdr(ws, row, col, value, bg=AZUL_DGI, fg="FFFFFF", bold=True, size=10, wrap=False):
+        c = ws.cell(row=row, column=col, value=value)
+        c.fill      = PatternFill("solid", fgColor=bg)
+        c.font      = Font(bold=bold, color=fg, size=size)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=wrap)
+        c.border    = borde
+        return c
+
+    def dat(ws, row, col, value, fmt=None, bg=BLANCO, bold=False, align="left"):
+        c = ws.cell(row=row, column=col, value=value)
+        c.fill      = PatternFill("solid", fgColor=bg)
+        c.font      = Font(bold=bold, size=10)
+        c.alignment = Alignment(horizontal=align, vertical="center")
+        c.border    = borde
+        if fmt:
+            c.number_format = fmt
+        return c
+
+    # ── Leer ventas aprobadas ─────────────────────────────────
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            q = """
+                SELECT
+                    ruc_cliente                                       AS ruc,
+                    cliente,
+                    SUM(monto_total)                                  AS total_ventas,
+                    SUM(COALESCE(subtotal,
+                        monto_total - COALESCE(itbms, 0)))            AS total_subtotal,
+                    SUM(COALESCE(itbms, 0))                           AS total_itbms,
+                    COUNT(*)                                          AS num_facturas,
+                    MAX(fecha)                                        AS ultima_fecha,
+                    categoria
+                FROM ventas
+                WHERE estado = 'aprobada'
+            """
+            params = []
+            if periodo:
+                anio, mes = periodo[:4], periodo[5:7]
+                q += " AND (fecha LIKE ? OR fecha LIKE ?)"
+                params.extend([f"{periodo}%", f"%/{mes}/{anio}"])
+            q += " GROUP BY COALESCE(ruc_cliente, cliente) ORDER BY total_ventas DESC"
+            rows = conn.execute(q, params).fetchall()
+    except Exception as e:
+        slog("error", "F430-Ventas error leyendo DB: {}", str(e))
+        return {"error": str(e)}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Reporte Ventas F430"
+
+    # ── Encabezado institucional ──────────────────────────────
+    ws.merge_cells("A1:I1")
+    c = ws["A1"]
+    c.value     = "REPÚBLICA DE PANAMÁ — MINISTERIO DE ECONOMÍA Y FINANZAS — DIRECCIÓN GENERAL DE INGRESOS"
+    c.font      = Font(bold=True, size=11, color="FFFFFF")
+    c.fill      = PatternFill("solid", fgColor=AZUL_DGI)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A2:I2")
+    c = ws["A2"]
+    c.value     = "REPORTE DE VENTAS — APOYO PARA DECLARACIÓN DE ITBMS DÉBITO FISCAL (Ref. Art. 1057-V Código Fiscal)"
+    c.font      = Font(bold=True, size=12, color="FFFFFF")
+    c.fill      = PatternFill("solid", fgColor=AZUL_DGI)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A3:I3")
+    c = ws["A3"]
+    c.value     = ("⚠ DOCUMENTO DE USO INTERNO — No es un formulario oficial DGI. "
+                   "Ingrese estos datos en el portal e-Tax 2.0 (etax2.mef.gob.pa) al declarar su ITBMS.")
+    c.font      = Font(italic=True, size=9, color="7B241C")
+    c.fill      = PatternFill("solid", fgColor="FDEDEC")
+    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[3].height = 32
+
+    # ── Datos del declarante ──────────────────────────────────
+    ws.merge_cells("A4:C4")
+    ws["A4"].value = "Empresa / Razón Social:"
+    ws["A4"].font  = Font(bold=True, size=10)
+    ws.merge_cells("D4:F4")
+    ws["D4"].value = nombre_empresa
+    ws.merge_cells("A5:C5")
+    ws["A5"].value = "RUC:"
+    ws["A5"].font  = Font(bold=True, size=10)
+    ws.merge_cells("D5:F5")
+    ws["D5"].value = ruc_empresa or "—"
+    ws.merge_cells("G4:I4")
+    ws["G4"].value = f"Período: {periodo or 'Acumulado'}"
+    ws["G4"].font  = Font(bold=True, size=10)
+    ws.merge_cells("G5:I5")
+    ws["G5"].value = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    ws["G5"].font  = Font(size=9, color="555555")
+
+    for row in ws.iter_rows(min_row=4, max_row=5, min_col=1, max_col=9):
+        for cell in row:
+            cell.fill   = PatternFill("solid", fgColor=GRIS)
+            cell.border = borde
+
+    # ── Columnas de datos ─────────────────────────────────────
+    COLS = ["N°", "RUC Cliente", "Cliente / Razón Social",
+            "Categoría", "N° Facturas", "Última Fecha",
+            "Base Imponible (B/.)", "ITBMS Débito (B/.)", "Total Ventas (B/.)"]
+
+    ROW_HDR = 7
+    for i, col_name in enumerate(COLS, 1):
+        hdr(ws, ROW_HDR, i, col_name, wrap=True)
+    ws.row_dimensions[ROW_HDR].height = 36
+
+    total_ventas_sum = 0.0
+    total_itbms_sum  = 0.0
+
+    for idx, row in enumerate(rows, 1):
+        r   = ROW_HDR + idx
+        bg  = BLANCO if idx % 2 == 0 else "F2F3F4"
+        tv  = float(row["total_ventas"]   or 0)
+        ti  = float(row["total_itbms"]    or 0)
+        ts  = float(row["total_subtotal"] or 0)
+        total_ventas_sum += tv
+        total_itbms_sum  += ti
+
+        dat(ws, r, 1, idx,                       bg=bg, align="center")
+        dat(ws, r, 2, row["ruc"] or "—",         bg=bg)
+        dat(ws, r, 3, row["cliente"] or "—",     bg=bg, bold=True)
+        dat(ws, r, 4, row["categoria"] or "—",   bg=bg)
+        dat(ws, r, 5, row["num_facturas"],        bg=bg, align="center")
+        dat(ws, r, 6, row["ultima_fecha"] or "—",bg=bg, align="center")
+        dat(ws, r, 7, ts,  fmt="#,##0.00",       bg=bg, align="right")
+        dat(ws, r, 8, ti,  fmt="#,##0.00",       bg=bg, align="right")
+        dat(ws, r, 9, tv,  fmt="#,##0.00",       bg=bg, align="right", bold=True)
+
+    # ── Fila de totales ───────────────────────────────────────
+    ROW_TOT = ROW_HDR + len(rows) + 1
+    ws.merge_cells(f"A{ROW_TOT}:F{ROW_TOT}")
+    c = ws.cell(row=ROW_TOT, column=1, value="TOTALES")
+    c.font      = Font(bold=True, size=11, color="FFFFFF")
+    c.fill      = PatternFill("solid", fgColor=AZUL_DGI)
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    c.border    = borde
+
+    dat(ws, ROW_TOT, 7, total_ventas_sum - total_itbms_sum,
+        fmt="#,##0.00", bg=AMARILLO, bold=True, align="right")
+    dat(ws, ROW_TOT, 8, total_itbms_sum,
+        fmt="#,##0.00", bg=AMARILLO, bold=True, align="right")
+    dat(ws, ROW_TOT, 9, total_ventas_sum,
+        fmt="#,##0.00", bg=AMARILLO, bold=True, align="right")
+    ws.row_dimensions[ROW_TOT].height = 22
+
+    # ── Nota legal ────────────────────────────────────────────
+    ROW_NOTA = ROW_TOT + 2
+    ws.merge_cells(f"A{ROW_NOTA}:I{ROW_NOTA}")
+    nota = (
+        "NOTA LEGAL: Este reporte es generado automáticamente como apoyo contable. "
+        "Los valores aquí presentados deben ser verificados contra los documentos originales "
+        "antes de ser utilizados en cualquier declaración tributaria oficial. "
+        "La empresa es responsable de la exactitud de los datos declarados ante la DGI."
+    )
+    nc = ws.cell(row=ROW_NOTA, column=1, value=nota)
+    nc.font      = Font(italic=True, size=8, color="555555")
+    nc.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[ROW_NOTA].height = 52
+
+    # ── Anchos de columna ─────────────────────────────────────
+    anchos = [5, 18, 35, 22, 12, 16, 20, 20, 20]
+    for i, w in enumerate(anchos, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws.freeze_panes = f"A{ROW_HDR + 1}"
+
+    try:
+        wb.save(output_path)
+    except Exception as e:
+        slog("error", "Reporte ventas F430 error guardando Excel: {}", str(e))
+        return {"error": str(e)}
+
+    return {
+        "total_clientes": len(rows),
+        "total_ventas":   round(total_ventas_sum, 2),
+        "total_itbms":    round(total_itbms_sum, 2),
+        "ruta":           output_path,
+    }
+
+
 # ─────────────────────────────────────────
 def procesar_cliente(nombre_cliente, procesadas):
     rutas = get_rutas_cliente(nombre_cliente)
