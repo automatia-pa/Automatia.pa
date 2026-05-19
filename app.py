@@ -9,6 +9,8 @@ import secrets
 import json
 import sqlite3
 from datetime import timedelta, datetime
+from dotenv import load_dotenv
+load_dotenv(os.path.expanduser("~/.private_data/.env"))
 
 from models import User, db_init
 from facturas_processor import (procesar_cliente, procesar_cliente_ventas,
