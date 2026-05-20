@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutomatIA — Términos y Condiciones</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style nonce="{{ csp_nonce() }}">
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #060910; --surface: #0d1117; --border: rgba(255,255,255,0.07); --accent: #00E5C3; --text: #F0F4FF; --muted: #7A8FAD; }
+  body { background: var(--bg); color: var(--text); font-family: "DM Sans", sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem 3rem; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.07; }
+  .orb-1 { width: 500px; height: 500px; background: var(--accent); top: -150px; left: -100px; }
+  .orb-2 { width: 400px; height: 400px; background: #3B82F6; bottom: -100px; right: -100px; }
+  .container { position: relative; z-index: 1; width: 100%; max-width: 860px; }
+  .page-header { text-align: center; padding: 2rem 0 2rem; }
+  .logo { font-family: "Syne", sans-serif; font-size: 1.5rem; font-weight: 800; color: var(--text); text-decoration: none; display: inline-block; margin-bottom: 1rem; }
+  .logo span { color: var(--accent); }
+  .page-header h1 { font-family: "Syne", sans-serif; font-size: 1.75rem; font-weight: 800; margin-bottom: 0.4rem; }
+  .page-header p { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.25rem; }
+  .action-row { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .btn-primary { background: var(--accent); color: #030F0D; border: none; border-radius: 100px; padding: 0.65rem 1.5rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; text-decoration: none; font-family: "DM Sans", sans-serif; transition: opacity 0.2s; }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 100px; padding: 0.65rem 1.5rem; font-size: 0.88rem; font-weight: 500; cursor: pointer; text-decoration: none; font-family: "DM Sans", sans-serif; transition: border-color 0.2s, color 0.2s; }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .pdf-wrapper { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; width: 100%; }
+  iframe { width: 100%; height: 78vh; border: none; display: block; }
+  .footer-nav { display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
+  .footer-nav a { color: var(--muted); font-size: 0.85rem; text-decoration: none; transition: color 0.2s; }
+  .footer-nav a:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="container">
+  <div class="page-header">
+    <a href="/" class="logo">Automat<span>IA</span></a>
+    <h1>Términos y Condiciones</h1>
+    <p>Versión 1.0 — Mayo 2025 · República de Panamá</p>
+    <div class="action-row">
+      <a href="/static/terminos_y_condiciones.pdf" download class="btn-primary">⬇ Descargar PDF</a>
+      <a href="{{ url_for('politica_privacidad') }}" class="btn-ghost">Política de Privacidad</a>
+      <a href="{{ url_for('login') }}" class="btn-ghost">← Volver al portal</a>
+    </div>
+  </div>
+
+  <div class="pdf-wrapper">
+    <iframe src="/static/terminos_y_condiciones.pdf" title="Términos y Condiciones AutomatIA">
+      <p style="padding:2rem;color:var(--muted);">Tu navegador no puede mostrar el PDF.
+        <a href="/static/terminos_y_condiciones.pdf" style="color:var(--accent);">Descárgalo aquí</a>.
+      </p>
+    </iframe>
+  </div>
+
+  <div class="footer-nav">
+    <a href="{{ url_for('politica_privacidad') }}">Política de Privacidad</a>
+    <a href="mailto:soporte@automatia.com">soporte@automatia.com</a>
+  </div>
+</div>
+</body>
+</html>

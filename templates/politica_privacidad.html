@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutomatIA — Política de Privacidad</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style nonce="{{ csp_nonce() }}">
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #060910; --surface: #0d1117; --surface2: #111820;
+    --border: rgba(255,255,255,0.07); --accent: #00E5C3;
+    --text: #F0F4FF; --muted: #7A8FAD; --error: #F87171; --success: #34D399;
+  }
+  body { background: var(--bg); color: var(--text); font-family: "DM Sans", sans-serif; min-height: 100vh; padding: 2rem 1rem 4rem; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.07; }
+  .orb-1 { width: 500px; height: 500px; background: var(--accent); top: -150px; left: -100px; }
+  .orb-2 { width: 400px; height: 400px; background: #3B82F6; bottom: -100px; right: -100px; }
+
+  .container { position: relative; z-index: 1; max-width: 780px; margin: 0 auto; }
+
+  /* Header */
+  .page-header { text-align: center; padding: 2.5rem 0 3rem; border-bottom: 1px solid var(--border); margin-bottom: 2.5rem; }
+  .logo { font-family: "Syne", sans-serif; font-size: 1.5rem; font-weight: 800; color: var(--text); text-decoration: none; display: inline-block; margin-bottom: 1.5rem; }
+  .logo span { color: var(--accent); }
+  .page-header h1 { font-family: "Syne", sans-serif; font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; }
+  .page-header .meta { color: var(--muted); font-size: 0.85rem; }
+  .badge { display: inline-flex; align-items: center; gap: 0.4rem; background: rgba(0,229,195,0.08); border: 1px solid rgba(0,229,195,0.2); border-radius: 100px; padding: 0.3rem 0.85rem; font-size: 0.78rem; color: var(--accent); font-weight: 500; margin-top: 1rem; }
+
+  /* Table of contents */
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 2.5rem; }
+  .toc h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 1rem; }
+  .toc ol { list-style: none; counter-reset: toc; }
+  .toc li { counter-increment: toc; margin-bottom: 0.5rem; }
+  .toc li a { color: var(--muted); text-decoration: none; font-size: 0.875rem; display: flex; align-items: center; gap: 0.6rem; transition: color 0.2s; }
+  .toc li a::before { content: counter(toc); min-width: 20px; height: 20px; border-radius: 50%; background: rgba(0,229,195,0.1); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .toc li a:hover { color: var(--accent); }
+
+  /* Sections */
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; margin-bottom: 1.25rem; scroll-margin-top: 2rem; }
+  .section-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .section-num { width: 32px; height: 32px; border-radius: 50%; background: rgba(0,229,195,0.1); border: 1px solid rgba(0,229,195,0.2); color: var(--accent); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .section h2 { font-family: "Syne", sans-serif; font-size: 1.1rem; font-weight: 700; }
+  .section p { color: var(--muted); font-size: 0.9rem; line-height: 1.75; margin-bottom: 1rem; }
+  .section p:last-child { margin-bottom: 0; }
+
+  /* Data table */
+  .data-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
+  .data-table th { background: rgba(0,229,195,0.08); color: var(--accent); font-weight: 600; padding: 0.65rem 1rem; text-align: left; border-bottom: 1px solid rgba(0,229,195,0.15); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .data-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); color: var(--muted); vertical-align: top; line-height: 1.5; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .data-table td:first-child { color: var(--text); font-weight: 500; white-space: nowrap; }
+
+  /* Highlight boxes */
+  .info-box { background: rgba(0,229,195,0.05); border: 1px solid rgba(0,229,195,0.15); border-radius: 10px; padding: 1rem 1.25rem; margin: 1rem 0; font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+  .info-box strong { color: var(--accent); }
+  .warn-box { background: rgba(248,113,113,0.05); border: 1px solid rgba(248,113,113,0.15); border-radius: 10px; padding: 1rem 1.25rem; margin: 1rem 0; font-size: 0.85rem; color: #FDA4A4; line-height: 1.6; }
+
+  /* Rights list */
+  .rights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 1rem 0; }
+  @media (max-width: 560px) { .rights-grid { grid-template-columns: 1fr; } }
+  .right-item { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; }
+  .right-item .right-name { font-weight: 600; font-size: 0.85rem; color: var(--text); margin-bottom: 0.25rem; }
+  .right-item .right-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
+
+  /* Contact card */
+  .contact-card { background: rgba(0,229,195,0.05); border: 1px solid rgba(0,229,195,0.2); border-radius: 12px; padding: 1.25rem; display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
+  .contact-icon { font-size: 1.75rem; }
+  .contact-card a { color: var(--accent); text-decoration: none; font-weight: 500; }
+
+  /* Footer nav */
+  .footer-nav { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--border); }
+  .footer-nav a { color: var(--muted); font-size: 0.85rem; text-decoration: none; transition: color 0.2s; }
+  .footer-nav a:hover { color: var(--accent); }
+  .footer-nav a.btn-back { background: var(--accent); color: #030F0D; border-radius: 100px; padding: 0.6rem 1.5rem; font-weight: 600; font-size: 0.88rem; }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="container">
+  <div class="page-header">
+    <a href="/" class="logo">Automat<span>IA</span></a>
+    <h1>Política de Privacidad</h1>
+    <p class="meta">Ley 81 de 2019 — República de Panamá</p>
+    <div class="badge">🛡 Versión 1.0 — Mayo 2025</div>
+  </div>
+
+  <!-- Tabla de contenido -->
+  <div class="toc">
+    <h3>Contenido</h3>
+    <ol>
+      <li><a href="#s1">¿Quién es el responsable de tus datos?</a></li>
+      <li><a href="#s2">¿Qué datos recopilamos?</a></li>
+      <li><a href="#s3">¿Para qué usamos tus datos?</a></li>
+      <li><a href="#s4">¿Por cuánto tiempo los guardamos?</a></li>
+      <li><a href="#s5">¿Compartimos tus datos con terceros?</a></li>
+      <li><a href="#s6">Seguridad de tus datos</a></li>
+      <li><a href="#s7">Tus derechos (Ley 81 de 2019)</a></li>
+      <li><a href="#s8">Derecho al olvido y eliminación de cuenta</a></li>
+      <li><a href="#s9">Cookies y sesiones</a></li>
+      <li><a href="#s10">Contacto y reclamos</a></li>
+    </ol>
+  </div>
+
+  <!-- Sección 1 -->
+  <div class="section" id="s1">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <h2>¿Quién es el responsable de tus datos?</h2>
+    </div>
+    <p>El responsable del tratamiento de los datos personales recopilados a través de AutomatIA es el operador de la plataforma, identificado en los Términos y Condiciones como <strong style="color:var(--text)">«El Proveedor»</strong>.</p>
+    <p>Para cualquier consulta relacionada con tus datos personales puedes escribir a: <strong style="color:var(--accent)">soporte@automatia.com</strong></p>
+  </div>
+
+  <!-- Sección 2 -->
+  <div class="section" id="s2">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <h2>¿Qué datos recopilamos?</h2>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr><th>Categoría</th><th>Datos específicos</th><th>Fuente</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Datos de cuenta</td>
+          <td>Nombre de empresa, correo electrónico, contraseña (cifrada con scrypt)</td>
+          <td>Registro del usuario</td>
+        </tr>
+        <tr>
+          <td>Datos fiscales</td>
+          <td>Facturas de compra/venta, RUC de proveedores y clientes, montos, ITBMS, fechas</td>
+          <td>Archivos subidos por el usuario</td>
+        </tr>
+        <tr>
+          <td>Datos de seguridad</td>
+          <td>Secret TOTP (2FA), tokens de recuperación de contraseña (expiran en 1 hora)</td>
+          <td>Configuración del usuario</td>
+        </tr>
+        <tr>
+          <td>Datos técnicos</td>
+          <td>Dirección IP (para control de rate limiting), logs de errores del sistema</td>
+          <td>Acceso al portal</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="info-box">
+      <strong>No recopilamos:</strong> datos de tarjetas de crédito, información biométrica, datos de geolocalización, ni perfiles de comportamiento de navegación.
+    </div>
+  </div>
+
+  <!-- Sección 3 -->
+  <div class="section" id="s3">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <h2>¿Para qué usamos tus datos?</h2>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr><th>Finalidad</th><th>Base legal</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Prestar el servicio contratado (procesamiento, clasificación y reporte de facturas)</td>
+          <td>Ejecución del contrato de suscripción</td>
+        </tr>
+        <tr>
+          <td>Autenticación y control de acceso seguro al portal</td>
+          <td>Interés legítimo / seguridad</td>
+        </tr>
+        <tr>
+          <td>Prevención de accesos no autorizados y abuso del sistema</td>
+          <td>Interés legítimo / seguridad</td>
+        </tr>
+        <tr>
+          <td>Envío de notificaciones relacionadas con el servicio (recuperación de contraseña, cambios en T&C)</td>
+          <td>Ejecución del contrato / consentimiento</td>
+        </tr>
+        <tr>
+          <td>Mejora del procesamiento automático de forma agregada y anonimizada</td>
+          <td>Consentimiento</td>
+        </tr>
+        <tr>
+          <td>Cumplimiento de requerimientos de autoridad competente</td>
+          <td>Obligación legal</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="warn-box">⚠ Los datos fiscales subidos al portal <strong>no son utilizados</strong> para entrenamiento de modelos de inteligencia artificial sin consentimiento expreso previo del cliente.</div>
+  </div>
+
+  <!-- Sección 4 -->
+  <div class="section" id="s4">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <h2>¿Por cuánto tiempo los guardamos?</h2>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr><th>Tipo de dato</th><th>Plazo de retención</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Datos de cuenta (nombre, email, contraseña)</td>
+          <td>Mientras la suscripción esté activa + 30 días de gracia tras cancelación</td>
+        </tr>
+        <tr>
+          <td>Datos fiscales (facturas, reportes)</td>
+          <td>Mientras la suscripción esté activa + 30 días de gracia. El cliente debe descargar sus datos antes de que finalice ese plazo.</td>
+        </tr>
+        <tr>
+          <td>Tokens de recuperación de contraseña</td>
+          <td>1 hora desde su creación (se invalidan automáticamente)</td>
+        </tr>
+        <tr>
+          <td>Registros de IP para rate limiting</td>
+          <td>15 minutos (se purgan automáticamente)</td>
+        </tr>
+        <tr>
+          <td>Logs de errores del sistema</td>
+          <td>30 días (gestionados por PythonAnywhere)</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="info-box">
+      <strong>Obligación legal:</strong> El Artículo 756 del Código Fiscal de Panamá exige conservar los documentos contables originales por un mínimo de 5 años. Esta obligación recae sobre el Cliente, no sobre AutomatIA. Te recomendamos descargar y archivar tus reportes regularmente.
+    </div>
+  </div>
+
+  <!-- Sección 5 -->
+  <div class="section" id="s5">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <h2>¿Compartimos tus datos con terceros?</h2>
+    </div>
+    <p>AutomatIA <strong style="color:var(--text)">no vende ni cede</strong> tus datos personales a terceros con fines comerciales. Los únicos casos en que datos pueden ser compartidos son:</p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Tercero</th><th>Qué datos</th><th>Por qué</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>PythonAnywhere (alojamiento)</td>
+          <td>Datos almacenados en el servidor</td>
+          <td>Infraestructura técnica necesaria para operar el servicio</td>
+        </tr>
+        <tr>
+          <td>OpenRouter / modelos de IA</td>
+          <td>Contenido de las facturas enviadas a procesar</td>
+          <td>Extracción automática de datos. Solo el texto extraído del documento.</td>
+        </tr>
+        <tr>
+          <td>DGI — e-Tax 2.0</td>
+          <td>RUC consultado</td>
+          <td>Validación del formato de RUC (consulta pública, sin datos del cliente)</td>
+        </tr>
+        <tr>
+          <td>Autoridades competentes</td>
+          <td>Lo requerido por ley</td>
+          <td>Cumplimiento de orden judicial o requerimiento legal</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Sección 6 -->
+  <div class="section" id="s6">
+    <div class="section-header">
+      <div class="section-num">6</div>
+      <h2>Seguridad de tus datos</h2>
+    </div>
+    <p>AutomatIA implementa las siguientes medidas técnicas de seguridad:</p>
+    <div class="info-box">
+      <strong>Medidas activas:</strong> Cifrado de sesiones mediante HTTPS · Contraseñas cifradas con scrypt (no reversibles) · Autenticación de dos factores (2FA/TOTP) opcional · Protección CSRF en todos los formularios · Política de seguridad de contenido (CSP) con nonce · Rate limiting en intentos de inicio de sesión · Separación de datos por cliente en carpetas independientes · Tokens de recuperación de contraseña de un solo uso con expiración de 1 hora
+    </div>
+    <div class="warn-box">⚠ Ningún sistema es 100% seguro. AutomatIA no puede garantizar seguridad absoluta frente a amenazas externas fuera de su control razonable. En caso de una brecha de seguridad que afecte tus datos, serás notificado a tu correo registrado.</div>
+  </div>
+
+  <!-- Sección 7 -->
+  <div class="section" id="s7">
+    <div class="section-header">
+      <div class="section-num">7</div>
+      <h2>Tus derechos — Ley 81 de 2019</h2>
+    </div>
+    <p>Conforme a la Ley 81 de 2019 sobre Protección de Datos Personales de la República de Panamá, tienes los siguientes derechos:</p>
+    <div class="rights-grid">
+      <div class="right-item">
+        <div class="right-name">✅ Acceso</div>
+        <div class="right-desc">Solicitar una copia de todos los datos personales que tenemos sobre ti.</div>
+      </div>
+      <div class="right-item">
+        <div class="right-name">✏️ Rectificación</div>
+        <div class="right-desc">Corregir datos inexactos o incompletos asociados a tu cuenta.</div>
+      </div>
+      <div class="right-item">
+        <div class="right-name">🗑️ Supresión</div>
+        <div class="right-desc">Solicitar la eliminación completa e irreversible de tu cuenta y todos tus datos.</div>
+      </div>
+      <div class="right-item">
+        <div class="right-name">🚫 Oposición</div>
+        <div class="right-desc">Oponerte al tratamiento de tus datos para fines de mejora del servicio.</div>
+      </div>
+      <div class="right-item">
+        <div class="right-name">📦 Portabilidad</div>
+        <div class="right-desc">Recibir tus datos en formato descargable (Excel/PDF) para transferirlos.</div>
+      </div>
+      <div class="right-item">
+        <div class="right-name">⏸️ Limitación</div>
+        <div class="right-desc">Solicitar que limitemos el uso de tus datos mientras se resuelve una disputa.</div>
+      </div>
+    </div>
+    <p style="margin-top:1rem;">Para ejercer cualquiera de estos derechos, escríbenos a <strong style="color:var(--accent)">soporte@automatia.com</strong> con el asunto "Derechos Ley 81" desde el correo registrado en tu cuenta. Responderemos en un plazo máximo de <strong style="color:var(--text)">15 días hábiles</strong>.</p>
+  </div>
+
+  <!-- Sección 8 -->
+  <div class="section" id="s8">
+    <div class="section-header">
+      <div class="section-num">8</div>
+      <h2>Derecho al olvido y eliminación de cuenta</h2>
+    </div>
+    <p>Tienes derecho a solicitar la eliminación completa e irreversible de tu cuenta y todos los datos asociados. Puedes hacerlo de dos formas:</p>
+    <div class="info-box" style="margin-bottom:1rem;">
+      <strong>Opción A — Desde el portal:</strong> Inicia sesión → Dashboard → Configuración → "Eliminar mi cuenta". Se te pedirá confirmación con tu contraseña. El proceso es inmediato e irreversible.
+    </div>
+    <div class="info-box">
+      <strong>Opción B — Por correo:</strong> Escribe a <strong>soporte@automatia.com</strong> con el asunto "Eliminar mi cuenta" desde tu correo registrado. Procesaremos la solicitud en un máximo de 5 días hábiles.
+    </div>
+    <div class="warn-box">
+      ⚠ <strong>Antes de eliminar tu cuenta:</strong> Descarga todos tus reportes y datos. Una vez eliminada la cuenta, los datos son borrados de forma permanente y no pueden recuperarse. AutomatIA no mantiene copias de respaldo de datos de clientes eliminados.
+    </div>
+  </div>
+
+  <!-- Sección 9 -->
+  <div class="section" id="s9">
+    <div class="section-header">
+      <div class="section-num">9</div>
+      <h2>Cookies y sesiones</h2>
+    </div>
+    <p>AutomatIA utiliza únicamente cookies de sesión estrictamente necesarias para el funcionamiento del portal. No utilizamos cookies de seguimiento, analíticas de terceros, ni publicidad.</p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Cookie</th><th>Propósito</th><th>Duración</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code style="color:var(--accent);font-size:0.82rem;">session</code></td>
+          <td>Mantener la sesión autenticada del usuario y el token CSRF de seguridad</td>
+          <td>8 horas o hasta cerrar sesión</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Las cookies de sesión tienen los atributos <code style="color:var(--accent);font-size:0.82rem;">Secure</code>, <code style="color:var(--accent);font-size:0.82rem;">HttpOnly</code> y <code style="color:var(--accent);font-size:0.82rem;">SameSite=Lax</code>, lo que impide su acceso desde JavaScript y su uso en peticiones de otros sitios.</p>
+  </div>
+
+  <!-- Sección 10 -->
+  <div class="section" id="s10">
+    <div class="section-header">
+      <div class="section-num">10</div>
+      <h2>Contacto y reclamos</h2>
+    </div>
+    <p>Para cualquier consulta, solicitud de derechos o reclamo relacionado con el tratamiento de tus datos personales:</p>
+    <div class="contact-card">
+      <div class="contact-icon">✉️</div>
+      <div>
+        <div style="font-weight:600;margin-bottom:0.2rem;">Correo de privacidad</div>
+        <a href="mailto:soporte@automatia.com">soporte@automatia.com</a>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.2rem;">Asunto: "Privacidad — [tu solicitud]" · Respuesta en 15 días hábiles</div>
+      </div>
+    </div>
+    <p style="margin-top:1.25rem;">Si no recibes respuesta satisfactoria, tienes derecho a presentar un reclamo ante la <strong style="color:var(--text)">Autoridad Nacional de Transparencia y Acceso a la Información (ANTAI)</strong> de la República de Panamá, que actúa como autoridad de control en materia de protección de datos personales conforme a la Ley 81 de 2019.</p>
+  </div>
+
+  <div class="footer-nav">
+    <a href="{{ url_for('login') }}" class="btn-back">← Volver al portal</a>
+    <a href="{{ url_for('terminos') }}">Términos y Condiciones</a>
+    <a href="mailto:soporte@automatia.com">soporte@automatia.com</a>
+  </div>
+</div>
+</body>
+</html>

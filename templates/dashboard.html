@@ -193,6 +193,7 @@
     <a href="/ventas" style="color:var(--muted);text-decoration:none;font-size:0.85rem;transition:color 0.2s;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">📤 Ventas</a>
     <span class="user-badge">{{ user.nombre }}</span>
     <a href="/logout" class="logout-btn">Cerrar sesion</a>
+    <a href="{{ url_for('eliminar_cuenta') }}" class="logout-btn" style="color:#F87171;" title="Eliminar mi cuenta">🗑</a>
   </div>
 </nav>
  
@@ -974,5 +975,18 @@ new Chart(document.getElementById('chartCantidad'), {
     if (e.key === 'Escape') document.getElementById('deleteOverlay').classList.remove('open');
   });
 </script>
+
+<footer style="text-align:center;padding:2rem 1rem 1.5rem;border-top:1px solid rgba(255,255,255,0.05);margin-top:2rem;">
+  <p style="font-size:0.78rem;color:#3A4F6A;">
+    <a href="{{ url_for('terminos') }}" target="_blank" style="color:#3A4F6A;text-decoration:none;margin:0 0.75rem;">Términos y Condiciones</a>
+    ·
+    <a href="{{ url_for('politica_privacidad') }}" target="_blank" style="color:#3A4F6A;text-decoration:none;margin:0 0.75rem;">Política de Privacidad</a>
+    ·
+    <a href="mailto:soporte@automatia.com" style="color:#3A4F6A;text-decoration:none;margin:0 0.75rem;">soporte@automatia.com</a>
+    ·
+    <a href="{{ url_for('eliminar_cuenta') }}" style="color:#7B241C;text-decoration:none;margin:0 0.75rem;">Eliminar mi cuenta</a>
+  </p>
+</footer>
+
 </body>
 </html>

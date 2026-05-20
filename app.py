@@ -12,7 +12,7 @@ from datetime import timedelta, datetime
 from dotenv import load_dotenv
 load_dotenv(os.path.expanduser("~/.private_data/.env"))
 
-from models import User, db_init
+from models import User, db_init, get_conn
 from facturas_processor import (procesar_cliente, procesar_cliente_ventas,
                                 get_rutas_cliente, exportar_dgi_csv,
                                 validar_ruc_dgi, exportar_reporte_compras_f430,
@@ -1426,6 +1426,71 @@ def eliminar_venta():
 
     flash("Venta eliminada correctamente", "success")
     return redirect(url_for("ventas"))
+
+
+# ── PÁGINAS LEGALES ───────────────────────────────────────────
+@app.route("/privacidad")
+def politica_privacidad():
+    return render_template("politica_privacidad.html")
+
+@app.route("/terminos")
+def terminos():
+    return render_template("terminos.html")
+
+
+# ── ELIMINAR CUENTA (Derecho al olvido — Ley 81 de 2019) ──────
+@app.route("/cuenta/eliminar", methods=["GET", "POST"])
+@login_required
+def eliminar_cuenta():
+    if request.method == "POST":
+        validate_csrf()
+        password = request.form.get("password", "")
+
+        # Verificar contraseña antes de borrar todo
+        if not User.check_password(current_user.email, password):
+            flash("Contraseña incorrecta. No se eliminó ningún dato.", "danger")
+            return render_template("delete_account.html")
+
+        nombre   = current_user.nombre
+        user_id  = current_user.id
+        email    = current_user.email
+
+        # 1. Borrar carpeta completa del cliente (facturas, reportes, DB)
+        try:
+            rutas = get_rutas_cliente(nombre)
+            carpeta_base = os.path.dirname(rutas["db"])  # ~/.private_data/clientes/<nombre>/
+            if os.path.exists(carpeta_base):
+                import shutil
+                shutil.rmtree(carpeta_base, ignore_errors=True)
+        except Exception as e:
+            import logging
+            logging.error(f"[DELETE_ACCOUNT] Error borrando carpeta de {nombre}: {e}")
+
+        # 2. Cerrar sesión antes de borrar el usuario
+        logout_user()
+        session.clear()
+
+        # 3. Borrar usuario de la base de datos (tokens de reset se borran en cascada)
+        try:
+            conn = get_conn()
+            conn.execute("DELETE FROM password_reset_tokens WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+            conn.commit()
+        except Exception as e:
+            import logging
+            logging.error(f"[DELETE_ACCOUNT] Error borrando usuario {email}: {e}")
+
+        import logging
+        logging.info(f"[DELETE_ACCOUNT] Cuenta eliminada: {email} ({nombre})")
+
+        flash(
+            "Tu cuenta y todos tus datos han sido eliminados permanentemente. "
+            "Lamentamos verte partir.",
+            "success"
+        )
+        return redirect(url_for("index"))
+
+    return render_template("delete_account.html")
 
 
 # ── LOGOUT ────────────────────────────────────────────────────

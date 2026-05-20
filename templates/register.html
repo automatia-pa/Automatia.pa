@@ -66,6 +66,19 @@
       <label>Contrasena</label>
       <input type="password" name="password" placeholder="Minimo 8 caracteres" required>
     </div>
+    <div class="form-group" style="margin-top:1.25rem;">
+      <label style="display:flex;align-items:flex-start;gap:0.6rem;text-transform:none;font-size:0.83rem;line-height:1.5;cursor:pointer;">
+        <input type="checkbox" name="acepta_terminos" required
+               style="width:16px;height:16px;min-width:16px;margin-top:2px;accent-color:var(--accent);cursor:pointer;">
+        <span style="color:var(--muted);">
+          He leído y acepto los
+          <a href="{{ url_for('terminos') }}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:500;">Términos y Condiciones</a>
+          y la
+          <a href="{{ url_for('politica_privacidad') }}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:500;">Política de Privacidad</a>
+          de AutomatIA, incluyendo el tratamiento de mis datos conforme a la Ley 81 de 2019.
+        </span>
+      </label>
+    </div>
     <button type="submit" class="btn">Crear mi portal</button>
   </form>
 
