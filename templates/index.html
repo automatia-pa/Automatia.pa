@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AutomatIA — Automatizacion de Facturas con IA</title>
+<title>AutomatIA — Procesamiento de Facturas con Inteligencia Artificial</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style nonce="{{ csp_nonce() }}">
@@ -13,21 +13,20 @@
     --border: rgba(255,255,255,0.07); --accent: #00E5C3;
     --accent2: #3B82F6; --accent3: #F59E0B;
     --text: #F0F4FF; --muted: #7A8FAD;
-    --error: #F87171; --success: #34D399;
     --font-head: "Syne", sans-serif; --font-body: "DM Sans", sans-serif;
   }
   html { scroll-behavior: smooth; }
   body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 16px; line-height: 1.7; overflow-x: hidden; }
-  .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.1; }
+  .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.08; }
   .orb-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; }
   .orb-2 { width: 500px; height: 500px; background: var(--accent2); bottom: 200px; right: -150px; }
 
-  /* ── NAV ── */
+  /* NAV */
   nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
     padding: 1.25rem 2rem;
     display: flex; align-items: center; justify-content: space-between;
-    background: rgba(6,9,16,0.85); backdrop-filter: blur(20px);
+    background: rgba(6,9,16,0.88); backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
   }
   .logo { font-family: var(--font-head); font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; color: var(--text); text-decoration: none; }
@@ -36,7 +35,6 @@
   nav ul a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
   nav ul a:hover { color: var(--text); }
 
-  /* ── LOGIN DROPDOWN en NAV ── */
   .nav-login-wrap { position: relative; }
   .nav-login-btn {
     background: var(--accent); color: #030F0D;
@@ -65,15 +63,12 @@
     z-index: 300;
   }
   .nav-login-dropdown.open { opacity: 1; pointer-events: all; transform: translateY(0); }
-
   .dropdown-logo { font-family: var(--font-head); font-size: 1.1rem; font-weight: 800; text-align: center; margin-bottom: 0.25rem; }
   .dropdown-logo span { color: var(--accent); }
   .dropdown-sub { text-align: center; font-size: 0.78rem; color: var(--muted); margin-bottom: 1.25rem; }
-
   .flash-inline { padding: 0.6rem 0.85rem; border-radius: 8px; font-size: 0.78rem; margin-bottom: 1rem; }
-  .flash-inline.danger { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: var(--error); }
-  .flash-inline.success { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); color: var(--success); }
-
+  .flash-inline.danger { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: #F87171; }
+  .flash-inline.success { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); color: #34D399; }
   .dd-form { display: flex; flex-direction: column; gap: 0.65rem; }
   .dd-label { font-size: 0.7rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; display: block; }
   .dd-input {
@@ -93,67 +88,53 @@
     transition: opacity 0.2s, transform 0.2s;
   }
   .dd-submit:hover { opacity: 0.9; transform: translateY(-1px); }
-  .dd-error-msg {
-    background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2);
-    color: var(--error); border-radius: 8px;
-    padding: 0.55rem 0.85rem; font-size: 0.78rem;
-    display: none; margin-top: 0.25rem;
-  }
-  .dd-error-msg.show { display: block; }
 
-  /* ── HERO ── */
+  /* HERO */
   section { position: relative; z-index: 1; }
   .hero { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8rem 2rem 4rem; }
-  .hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid rgba(0,229,195,0.3); background: rgba(0,229,195,0.06); color: var(--accent); font-size: 0.8rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.4rem 1rem; border-radius: 100px; margin-bottom: 2rem; animation: fadeUp 0.8s ease both; }
+  .hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; border: 1px solid rgba(0,229,195,0.25); background: rgba(0,229,195,0.05); color: var(--accent); font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.4rem 1rem; border-radius: 100px; margin-bottom: 2rem; animation: fadeUp 0.8s ease both; }
   .dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
   @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
-  .hero h1 { font-family: var(--font-head); font-size: clamp(3rem, 7vw, 6rem); font-weight: 800; line-height: 1.02; letter-spacing: -0.03em; max-width: 900px; animation: fadeUp 0.8s 0.1s ease both; }
+  .hero h1 { font-family: var(--font-head); font-size: clamp(2.8rem, 6.5vw, 5.5rem); font-weight: 800; line-height: 1.04; letter-spacing: -0.03em; max-width: 860px; animation: fadeUp 0.8s 0.1s ease both; }
   .hero h1 em { font-style: normal; color: var(--accent); }
-  .hero-sub { font-size: 1.15rem; color: var(--muted); max-width: 560px; margin: 1.5rem auto 3rem; font-weight: 300; animation: fadeUp 0.8s 0.2s ease both; }
+  .hero-sub { font-size: 1.1rem; color: var(--muted); max-width: 540px; margin: 1.5rem auto 3rem; font-weight: 300; line-height: 1.75; animation: fadeUp 0.8s 0.2s ease both; }
   .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; animation: fadeUp 0.8s 0.3s ease both; }
-  .btn-primary { background: var(--accent); color: #030F0D; padding: 0.85rem 2.2rem; border-radius: 100px; text-decoration: none; font-weight: 500; font-size: 1rem; transition: transform 0.2s, opacity 0.2s; display: inline-block; }
+  .btn-primary { background: var(--accent); color: #030F0D; padding: 0.85rem 2.2rem; border-radius: 100px; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: transform 0.2s, opacity 0.2s; display: inline-block; }
   .btn-primary:hover { transform: translateY(-2px); opacity: 0.9; }
-  .btn-ghost { border: 1px solid var(--border); color: var(--text); padding: 0.85rem 2.2rem; border-radius: 100px; text-decoration: none; font-weight: 400; font-size: 1rem; transition: border-color 0.2s, background 0.2s; display: inline-block; background: rgba(255,255,255,0.03); }
-  .btn-ghost:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); }
+  .btn-ghost { border: 1px solid var(--border); color: var(--text); padding: 0.85rem 2.2rem; border-radius: 100px; text-decoration: none; font-weight: 400; font-size: 0.95rem; transition: border-color 0.2s, background 0.2s; display: inline-block; background: rgba(255,255,255,0.03); }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); }
 
-  /* ── HERO LOGIN CARD (vista móvil / fallback) ── */
   .hero-login-card {
     animation: fadeUp 0.8s 0.4s ease both;
-    background: var(--surface); border: 1px solid rgba(0,229,195,0.18);
+    background: var(--surface); border: 1px solid rgba(0,229,195,0.15);
     border-radius: 24px; padding: 2rem; width: 100%; max-width: 360px;
-    margin: 2.5rem auto 0; display: none; /* solo visible en mobile */
+    margin: 2.5rem auto 0; display: none;
   }
   .hero-login-card h3 { font-family: var(--font-head); font-size: 1rem; font-weight: 700; text-align: center; margin-bottom: 0.25rem; }
   .hero-login-card p { font-size: 0.78rem; color: var(--muted); text-align: center; margin-bottom: 1.25rem; }
 
-  /* ── STATS ── */
-  .stats-bar { display: flex; justify-content: center; gap: 4rem; flex-wrap: wrap; padding: 3rem 2rem 4rem; border-top: 1px solid var(--border); max-width: 1200px; margin: 0 auto; }
-  .stat { text-align: center; }
-  .stat-num { font-family: var(--font-head); font-size: 2.4rem; font-weight: 800; letter-spacing: -0.03em; }
-  .stat-num span { color: var(--accent); }
-  .stat-label { font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem; }
+  /* COMO FUNCIONA */
+  .como-funciona { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
+  .section-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 1rem; }
+  .section-title { font-family: var(--font-head); font-size: clamp(1.8rem, 3.5vw, 2.8rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; max-width: 580px; margin-bottom: 1rem; }
+  .section-sub { color: var(--muted); max-width: 500px; font-weight: 300; margin-bottom: 3.5rem; line-height: 1.75; font-size: 0.95rem; }
 
-  /* ── SECTIONS ── */
-  .section-label { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 1rem; }
-  .section-title { font-family: var(--font-head); font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; max-width: 600px; margin-bottom: 1rem; }
-  .section-sub { color: var(--muted); max-width: 520px; font-weight: 300; margin-bottom: 3.5rem; line-height: 1.7; }
-
-  .como-funciona { padding: 6rem 2rem; max-width: 1200px; margin: 0 auto; }
   .flujo { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-bottom: 4rem; }
   .flujo-paso { background: var(--surface); padding: 2rem 1.25rem; text-align: center; position: relative; transition: background 0.3s; }
   .flujo-paso:hover { background: var(--surface2); }
-  .flujo-flecha { position: absolute; right: -10px; top: 38px; color: var(--accent); font-size: 1rem; z-index: 2; }
-  .flujo-icono { font-size: 1.8rem; margin-bottom: 0.75rem; }
+  .flujo-flecha { position: absolute; right: -10px; top: 32px; color: var(--muted); font-size: 0.9rem; z-index: 2; }
+  .flujo-num { width: 32px; height: 32px; border-radius: 50%; background: rgba(0,229,195,0.1); border: 1px solid rgba(0,229,195,0.2); color: var(--accent); font-size: 0.78rem; font-weight: 700; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; }
   .flujo-paso h4 { font-family: var(--font-head); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem; }
-  .flujo-paso p { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+  .flujo-paso p { font-size: 0.78rem; color: var(--muted); line-height: 1.55; }
 
+  /* PORTAL */
   .portal { padding: 6rem 2rem; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .portal-inner { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
+  .portal-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
   .portal-mockup { background: var(--bg); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; box-shadow: 0 40px 80px rgba(0,0,0,0.5); }
   .mockup-bar { background: var(--surface2); padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid var(--border); }
   .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .mockup-url { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 0.25rem 0.75rem; font-size: 0.72rem; color: var(--muted); flex: 1; text-align: center; }
+  .mockup-url { background: rgba(255,255,255,0.04); border-radius: 6px; padding: 0.25rem 0.75rem; font-size: 0.72rem; color: var(--muted); flex: 1; text-align: center; }
   .mockup-body { padding: 2rem; }
   .mockup-logo { font-family: var(--font-head); font-size: 1.1rem; font-weight: 800; margin-bottom: 1.5rem; text-align: center; }
   .mockup-logo span { color: var(--accent); }
@@ -161,54 +142,51 @@
   .mockup-field { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 0.7rem 1rem; font-size: 0.82rem; color: var(--muted); font-family: var(--font-body); }
   .mockup-btn { background: var(--accent); color: #030F0D; border-radius: 10px; padding: 0.7rem; font-size: 0.85rem; font-weight: 600; text-align: center; cursor: pointer; margin-top: 0.25rem; }
   .mockup-divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
-  .mockup-upload { border: 2px dashed rgba(0,229,195,0.25); border-radius: 12px; padding: 1.5rem; text-align: center; }
-  .mockup-upload-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .mockup-upload { border: 2px dashed rgba(0,229,195,0.2); border-radius: 12px; padding: 1.5rem; text-align: center; }
   .mockup-upload p { font-size: 0.75rem; color: var(--muted); }
   .mockup-upload span { color: var(--accent); font-weight: 500; }
   .portal-features { display: flex; flex-direction: column; gap: 1.5rem; }
   .portal-feat { display: flex; gap: 1rem; align-items: flex-start; }
-  .feat-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(0,229,195,0.08); border: 1px solid rgba(0,229,195,0.15); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
-  .feat-icon.blue { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.15); }
-  .feat-icon.amber { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.15); }
-  .portal-feat h4 { font-family: var(--font-head); font-size: 1rem; font-weight: 700; margin-bottom: 0.3rem; }
-  .portal-feat p { color: var(--muted); font-size: 0.875rem; font-weight: 300; line-height: 1.6; }
+  .feat-marker { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 8px; }
+  .feat-marker.blue { background: var(--accent2); }
+  .feat-marker.amber { background: var(--accent3); }
+  .portal-feat h4 { font-family: var(--font-head); font-size: 0.95rem; font-weight: 700; margin-bottom: 0.3rem; }
+  .portal-feat p { color: var(--muted); font-size: 0.875rem; font-weight: 300; line-height: 1.65; }
 
-  .nichos { padding: 6rem 2rem; max-width: 1200px; margin: 0 auto; }
-  .nichos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
-  .nicho-card { background: var(--surface); padding: 2.5rem; transition: background 0.3s; }
-  .nicho-card:hover { background: var(--surface2); }
-  .nicho-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 1.5rem; }
-  .nicho-card:nth-child(1) .nicho-icon { background: rgba(0,229,195,0.1); }
-  .nicho-card:nth-child(2) .nicho-icon { background: rgba(59,130,246,0.1); }
-  .nicho-card:nth-child(3) .nicho-icon { background: rgba(245,158,11,0.1); }
-  .nicho-tag { font-size: 0.72rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.75rem; }
-  .nicho-card:nth-child(1) .nicho-tag { color: var(--accent); }
-  .nicho-card:nth-child(2) .nicho-tag { color: var(--accent2); }
-  .nicho-card:nth-child(3) .nicho-tag { color: var(--accent3); }
-  .nicho-card h3 { font-family: var(--font-head); font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.75rem; }
-  .nicho-card > p { color: var(--muted); font-size: 0.875rem; font-weight: 300; line-height: 1.7; margin-bottom: 1.5rem; }
-  .nicho-features { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
-  .nicho-features li { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); }
-  .nicho-features li::before { content: "→"; font-size: 0.8rem; margin-top: 3px; flex-shrink: 0; }
-  .nicho-card:nth-child(1) .nicho-features li::before { color: var(--accent); }
-  .nicho-card:nth-child(2) .nicho-features li::before { color: var(--accent2); }
-  .nicho-card:nth-child(3) .nicho-features li::before { color: var(--accent3); }
+  /* QUE PROCESA */
+  .formatos { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
+  .formatos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-top: 3rem; }
+  .formato-card { background: var(--surface); padding: 2rem; transition: background 0.3s; }
+  .formato-card:hover { background: var(--surface2); }
+  .formato-tag { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.75rem; }
+  .formato-card:nth-child(1) .formato-tag { color: var(--accent); }
+  .formato-card:nth-child(2) .formato-tag { color: var(--accent2); }
+  .formato-card:nth-child(3) .formato-tag { color: var(--accent3); }
+  .formato-card h3 { font-family: var(--font-head); font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.75rem; }
+  .formato-card > p { color: var(--muted); font-size: 0.875rem; font-weight: 300; line-height: 1.7; margin-bottom: 1.25rem; }
+  .formato-list { list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
+  .formato-list li { font-size: 0.83rem; color: var(--muted); padding-left: 1rem; position: relative; line-height: 1.5; }
+  .formato-list li::before { content: "—"; position: absolute; left: 0; font-size: 0.7rem; }
+  .formato-card:nth-child(1) .formato-list li::before { color: var(--accent); }
+  .formato-card:nth-child(2) .formato-list li::before { color: var(--accent2); }
+  .formato-card:nth-child(3) .formato-list li::before { color: var(--accent3); }
 
+  /* DASHBOARD PREVIEW */
   .dashboard-preview { padding: 6rem 2rem; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .dash-inner { max-width: 1200px; margin: 0 auto; }
+  .dash-inner { max-width: 1100px; margin: 0 auto; }
   .dash-mockup { background: var(--bg); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-top: 3rem; box-shadow: 0 40px 80px rgba(0,0,0,0.5); }
   .dash-header { background: var(--surface2); padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
   .dash-title { font-family: var(--font-head); font-size: 0.9rem; font-weight: 700; }
-  .dash-badge { background: rgba(0,229,195,0.1); color: var(--accent); font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 100px; border: 1px solid rgba(0,229,195,0.2); }
+  .dash-badge { background: rgba(0,229,195,0.08); color: var(--accent); font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 100px; border: 1px solid rgba(0,229,195,0.15); }
   .dash-body { padding: 1.5rem; }
   .dash-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
   .dash-metric { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
-  .dash-metric-label { font-size: 0.7rem; color: var(--muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.06em; }
-  .dash-metric-value { font-family: var(--font-head); font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+  .dash-metric-label { font-size: 0.68rem; color: var(--muted); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .dash-metric-value { font-family: var(--font-head); font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
   .green { color: var(--accent); } .blue { color: var(--accent2); } .amber { color: var(--accent3); }
   .dash-table { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
   .dash-table-header { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
-  .dash-table-header span { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .dash-table-header span { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
   .dash-row { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); align-items: center; }
   .dash-row:last-child { border-bottom: none; }
   .dash-row span { font-size: 0.82rem; color: var(--muted); }
@@ -217,43 +195,45 @@
   .conf-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; width: 60px; overflow: hidden; }
   .conf-fill { height: 100%; background: var(--accent); border-radius: 2px; }
 
-  .pricing { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
-  .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 3.5rem; }
+  /* PRECIOS */
+  .pricing { padding: 6rem 2rem; max-width: 1000px; margin: 0 auto; }
+  .pricing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-top: 3.5rem; }
   .price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2rem; transition: border-color 0.3s; }
-  .price-card:hover { border-color: rgba(255,255,255,0.15); }
-  .price-card.featured { border-color: rgba(0,229,195,0.4); background: rgba(0,229,195,0.03); }
-  .price-badge { display: inline-block; background: var(--accent); color: #030F0D; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.25rem 0.75rem; border-radius: 100px; margin-bottom: 1.25rem; }
-  .price-tier { font-size: 0.8rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
-  .price-name { font-family: var(--font-head); font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 1rem; }
-  .price-amount { font-family: var(--font-head); font-size: 2.8rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.25rem; }
-  .price-amount sup { font-size: 1.2rem; font-weight: 500; vertical-align: super; color: var(--muted); }
-  .price-period { font-size: 0.85rem; color: var(--muted); margin-bottom: 1.75rem; }
-  .price-features { list-style: none; display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 2rem; }
-  .price-features li { display: flex; align-items: center; gap: 0.6rem; font-size: 0.875rem; color: var(--muted); }
-  .price-features li::before { content: "✓"; color: var(--accent); font-weight: 600; font-size: 0.8rem; }
+  .price-card:hover { border-color: rgba(255,255,255,0.12); }
+  .price-card.featured { border-color: rgba(0,229,195,0.35); background: rgba(0,229,195,0.02); }
+  .price-badge { display: inline-block; background: var(--accent); color: #030F0D; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.7rem; border-radius: 100px; margin-bottom: 1.25rem; }
+  .price-tier { font-size: 0.78rem; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.4rem; }
+  .price-name { font-family: var(--font-head); font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 1rem; }
+  .price-amount { font-family: var(--font-head); font-size: 2.6rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.25rem; }
+  .price-amount sup { font-size: 1.1rem; font-weight: 500; vertical-align: super; color: var(--muted); }
+  .price-period { font-size: 0.83rem; color: var(--muted); margin-bottom: 1.75rem; }
+  .price-features { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 2rem; }
+  .price-features li { display: flex; align-items: flex-start; gap: 0.6rem; font-size: 0.875rem; color: var(--muted); line-height: 1.5; }
+  .price-features li::before { content: "—"; color: var(--accent); font-weight: 600; font-size: 0.8rem; flex-shrink: 0; margin-top: 2px; }
   .price-btn { display: block; text-align: center; padding: 0.8rem; border-radius: 100px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: all 0.2s; border: 1px solid var(--border); color: var(--text); background: rgba(255,255,255,0.04); }
-  .price-btn:hover { background: rgba(255,255,255,0.08); }
+  .price-btn:hover { background: rgba(255,255,255,0.07); }
   .price-btn.primary { background: var(--accent); color: #030F0D; border-color: var(--accent); }
   .price-btn.primary:hover { opacity: 0.88; }
+  .price-note { font-size: 0.78rem; color: var(--muted); margin-top: 0.75rem; text-align: center; line-height: 1.5; }
 
+  /* CTA */
   .cta-section { padding: 8rem 2rem; text-align: center; position: relative; overflow: hidden; }
-  .cta-section::before { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 800px; height: 400px; background: radial-gradient(ellipse, rgba(0,229,195,0.07) 0%, transparent 70%); pointer-events: none; }
-  .cta-section h2 { font-family: var(--font-head); font-size: clamp(2.5rem, 5vw, 4rem); font-weight: 800; letter-spacing: -0.03em; max-width: 700px; margin: 0 auto 1.25rem; line-height: 1.05; }
-  .cta-section p { color: var(--muted); font-size: 1.1rem; font-weight: 300; max-width: 480px; margin: 0 auto 2.5rem; }
+  .cta-section::before { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 700px; height: 350px; background: radial-gradient(ellipse, rgba(0,229,195,0.06) 0%, transparent 70%); pointer-events: none; }
+  .cta-section h2 { font-family: var(--font-head); font-size: clamp(2.2rem, 4.5vw, 3.5rem); font-weight: 800; letter-spacing: -0.03em; max-width: 620px; margin: 0 auto 1.25rem; line-height: 1.08; }
+  .cta-section p { color: var(--muted); font-size: 1rem; font-weight: 300; max-width: 440px; margin: 0 auto 2.5rem; line-height: 1.7; }
 
   footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; }
-  footer p { color: var(--muted); font-size: 0.85rem; }
+  footer p { color: var(--muted); font-size: 0.82rem; }
   .footer-links { display: flex; gap: 2rem; }
-  .footer-links a { color: var(--muted); text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+  .footer-links a { color: var(--muted); text-decoration: none; font-size: 0.82rem; transition: color 0.2s; }
   .footer-links a:hover { color: var(--text); }
 
-  .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s ease, transform 0.7s ease; }
   .reveal.visible { opacity: 1; transform: translateY(0); }
 
-  /* ── MOBILE ── */
   @media (max-width: 900px) {
     nav ul { display: none; }
-    .nichos-grid, .pricing-grid, .portal-inner { grid-template-columns: 1fr; }
+    .formatos-grid, .pricing-grid, .portal-inner { grid-template-columns: 1fr; }
     .flujo { grid-template-columns: 1fr 1fr; }
     .dash-metrics { grid-template-columns: repeat(2, 1fr); }
     .dash-table-header, .dash-row { grid-template-columns: 2fr 2fr 1fr; }
@@ -262,7 +242,8 @@
   @media (max-width: 600px) {
     .nav-login-dropdown { right: -1rem; width: calc(100vw - 2rem); }
     .hero-login-card { display: block; }
-    .nav-login-btn { display: none; } /* en móvil usamos la card del hero */
+    .nav-login-btn { display: none; }
+    .pricing-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -271,17 +252,15 @@
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
 
-<!-- ── NAV ── -->
 <nav>
   <a href="#" class="logo">Automat<span>IA</span></a>
   <ul>
     <li><a href="#como-funciona">Como funciona</a></li>
     <li><a href="#portal">Portal</a></li>
-    <li><a href="#nichos">Soluciones</a></li>
     <li><a href="#precios">Precios</a></li>
+    <li><a href="#contacto">Contacto</a></li>
   </ul>
 
-  <!-- LOGIN DROPDOWN -->
   <div class="nav-login-wrap">
     <button class="nav-login-btn" id="loginToggle" type="button">
       Iniciar sesion
@@ -292,16 +271,13 @@
 
     <div class="nav-login-dropdown" id="loginDropdown">
       <div class="dropdown-logo">Automat<span>IA</span></div>
-      <p class="dropdown-sub">Ingresa a tu portal de facturas</p>
+      <p class="dropdown-sub">Ingresa a tu portal</p>
 
-      <!-- Mensajes flash de Flask (solo si hay) -->
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
           <div class="flash-inline {{ category }}">{{ message }}</div>
         {% endfor %}
       {% endwith %}
-
-      <div id="ddError" class="dd-error-msg"></div>
 
       <form method="POST" action="/login" class="dd-form" id="loginForm">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -319,19 +295,17 @@
   </div>
 </nav>
 
-<!-- ── HERO ── -->
 <section class="hero">
-  <div class="hero-badge"><div class="dot"></div>Sistema activo — procesando facturas en tiempo real</div>
-  <h1>Tus facturas procesadas<br>por <em>IA en segundos</em>,<br>no en horas</h1>
-  <p class="hero-sub">Sube tus facturas desde tu portal personal. La IA las lee, extrae los datos, actualiza tu Excel y te notifica por Telegram. Sin contadores tecleando datos.</p>
+  <div class="hero-badge"><div class="dot"></div>Panama — procesamiento fiscal con IA</div>
+  <h1>De la factura al reporte<br>sin tocar un <em>teclado</em></h1>
+  <p class="hero-sub">Sube tus facturas desde tu portal. La IA extrae los datos, los organiza en una base de datos, actualiza tu Excel y te avisa por Telegram. Todo en segundos.</p>
   <div class="hero-actions">
-    <a href="#contacto" class="btn-primary">Solicitar demo gratuita</a>
-    <a href="#como-funciona" class="btn-ghost">Ver como funciona &rarr;</a>
+    <a href="#contacto" class="btn-primary">Hablar con nosotros</a>
+    <a href="#como-funciona" class="btn-ghost">Como funciona &rarr;</a>
   </div>
 
-  <!-- Login card visible solo en móvil (< 600px) -->
   <div class="hero-login-card">
-    <h3>Automat<span style="color:var(--accent)">IA</span> — Portal</h3>
+    <h3>Automat<span style="color:var(--accent)">IA</span></h3>
     <p>Ingresa a tu cuenta</p>
     <form method="POST" action="/login" style="display:flex;flex-direction:column;gap:0.65rem;">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -341,53 +315,46 @@
       </div>
       <div>
         <label class="dd-label">Contrasena</label>
-        <input class="dd-input" type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+        <input class="dd-input" type="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required autocomplete="current-password">
       </div>
       <button type="submit" class="dd-submit">Entrar &rarr;</button>
     </form>
   </div>
 </section>
 
-<div class="stats-bar reveal">
-  <div class="stat"><div class="stat-num">95<span>%</span></div><div class="stat-label">precision en extraccion de datos</div></div>
-  <div class="stat"><div class="stat-num">15<span>s</span></div><div class="stat-label">tiempo de procesamiento por factura</div></div>
-  <div class="stat"><div class="stat-num">24<span>/7</span></div><div class="stat-label">el sistema trabaja sin parar</div></div>
-  <div class="stat"><div class="stat-num">0</div><div class="stat-label">datos ingresados manualmente</div></div>
-</div>
-
 <section class="como-funciona reveal" id="como-funciona">
   <p class="section-label">El proceso</p>
-  <h2 class="section-title">De la factura al reporte en 5 pasos automaticos</h2>
-  <p class="section-sub">Cada factura pasa por este flujo sin que nadie toque un teclado. Completamente automatizado.</p>
+  <h2 class="section-title">Cinco pasos, ninguno manual</h2>
+  <p class="section-sub">Desde que subes el archivo hasta que recibes la notificacion, el sistema trabaja solo.</p>
   <div class="flujo">
     <div class="flujo-paso">
       <div class="flujo-flecha">&rarr;</div>
-      <div class="flujo-icono">&#127760;</div>
-      <h4>Tu portal web</h4>
-      <p>Ingresas con tu usuario. Subes PDF, foto o Excel desde cualquier dispositivo.</p>
+      <div class="flujo-num">1</div>
+      <h4>Subes la factura</h4>
+      <p>PDF, imagen o Excel desde cualquier dispositivo. Maximo 10 MB por archivo.</p>
     </div>
     <div class="flujo-paso">
       <div class="flujo-flecha">&rarr;</div>
-      <div class="flujo-icono">&#129504;</div>
-      <h4>IA lee la factura</h4>
-      <p>Extrae proveedor, RUC, fecha, monto y descripcion en segundos.</p>
+      <div class="flujo-num">2</div>
+      <h4>La IA la lee</h4>
+      <p>Extrae proveedor, RUC, fecha, monto, descripcion e ITBMS en segundos.</p>
     </div>
     <div class="flujo-paso">
       <div class="flujo-flecha">&rarr;</div>
-      <div class="flujo-icono">&#128451;</div>
-      <h4>Guarda en base de datos</h4>
-      <p>Detecta duplicados. Registra con nivel de confianza y modelo usado.</p>
+      <div class="flujo-num">3</div>
+      <h4>Se guarda y valida</h4>
+      <p>Detecta duplicados automaticamente. Valida el RUC contra e-Tax 2.0 de la DGI.</p>
     </div>
     <div class="flujo-paso">
       <div class="flujo-flecha">&rarr;</div>
-      <div class="flujo-icono">&#128202;</div>
+      <div class="flujo-num">4</div>
       <h4>Actualiza tu Excel</h4>
-      <p>Tu archivo se actualiza automaticamente despues de cada factura.</p>
+      <p>El archivo de exportacion se regenera despues de cada factura procesada.</p>
     </div>
     <div class="flujo-paso">
-      <div class="flujo-icono">&#128241;</div>
-      <h4>Notificacion Telegram</h4>
-      <p>Recibes el resumen en tu celular en tiempo real.</p>
+      <div class="flujo-num">5</div>
+      <h4>Aviso por Telegram</h4>
+      <p>Recibes el resumen de la factura directamente en tu celular.</p>
     </div>
   </div>
 </section>
@@ -396,35 +363,35 @@
   <div class="portal-inner">
     <div>
       <p class="section-label">Portal por cliente</p>
-      <h2 class="section-title" style="max-width:100%">Cada empresa tiene su propio espacio seguro</h2>
-      <p class="section-sub" style="max-width:100%">Nada de carpetas compartidas ni correos. Cada cliente accede con su usuario y contrasena a un portal exclusivo donde sube facturas y ve sus reportes en tiempo real.</p>
+      <h2 class="section-title" style="max-width:100%">Un portal privado para cada empresa</h2>
+      <p class="section-sub" style="max-width:100%">Cada cliente accede con usuario y contrasena a un espacio exclusivo. Sus facturas, base de datos y reportes son completamente separados de los de otros clientes.</p>
       <div class="portal-features">
         <div class="portal-feat">
-          <div class="feat-icon">&#128272;</div>
+          <div class="feat-marker"></div>
           <div>
             <h4>Acceso con usuario y contrasena</h4>
-            <p>Cada empresa tiene credenciales unicas. Sus datos son completamente privados y separados de otros clientes.</p>
+            <p>Credenciales individuales con 2FA opcional. Sesion cifrada y protegida contra accesos no autorizados.</p>
           </div>
         </div>
         <div class="portal-feat">
-          <div class="feat-icon blue">&#128228;</div>
+          <div class="feat-marker blue"></div>
           <div>
             <h4>Subida de facturas desde el navegador</h4>
-            <p>PDF, fotos, Excel. El cliente arrastra sus archivos y el sistema los procesa en segundos. Sin instalar nada.</p>
+            <p>PDF, fotos de facturas y Excel. El cliente arrastra sus archivos y el sistema los procesa. Sin instalar nada.</p>
           </div>
         </div>
         <div class="portal-feat">
-          <div class="feat-icon amber">&#128200;</div>
+          <div class="feat-marker amber"></div>
           <div>
-            <h4>Dashboard en tiempo real</h4>
-            <p>Ve facturas procesadas, montos totales, graficos por proveedor y descarga su Excel actualizado en cualquier momento.</p>
+            <h4>Reportes de compras y ventas</h4>
+            <p>Dashboard con totales, descarga de Excel actualizado y generacion del reporte F430 para apoyo de declaracion de ITBMS ante la DGI.</p>
           </div>
         </div>
         <div class="portal-feat">
-          <div class="feat-icon">&#128241;</div>
+          <div class="feat-marker"></div>
           <div>
-            <h4>Alertas instantaneas por Telegram</h4>
-            <p>Cada vez que se procesa una factura, el cliente recibe notificacion con el resumen directamente en su celular.</p>
+            <h4>Notificaciones por Telegram</h4>
+            <p>Cada factura procesada genera un aviso en Telegram con el resumen de los datos extraidos.</p>
           </div>
         </div>
       </div>
@@ -434,73 +401,69 @@
         <div class="mockup-dot" style="background:#FF5F57"></div>
         <div class="mockup-dot" style="background:#FEBC2E"></div>
         <div class="mockup-dot" style="background:#28C840"></div>
-        <div class="mockup-url">portal.automatia.io/dashboard</div>
+        <div class="mockup-url">automatia.pythonanywhere.com/dashboard</div>
       </div>
       <div class="mockup-body">
         <div class="mockup-logo">Automat<span>IA</span> &mdash; Portal</div>
         <div class="mockup-form">
-          <div class="mockup-field">&#128100; usuario@empresa.com</div>
-          <div class="mockup-field">&#128274; &bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div>
+          <div class="mockup-field">usuario@empresa.com</div>
+          <div class="mockup-field">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div>
           <div class="mockup-btn">Ingresar a mi portal</div>
         </div>
         <hr class="mockup-divider">
-        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.75rem;text-align:center;">Ya dentro &mdash; panel de Cable Onda S.A.</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.75rem;text-align:center;">Panel de Cable Onda S.A.</div>
         <div class="mockup-upload">
-          <div class="mockup-upload-icon">&#128196;</div>
           <p>Arrastra tus facturas aqui o <span>selecciona archivos</span></p>
-          <p style="margin-top:0.35rem;font-size:0.68rem;">PDF, JPG, XLSX &mdash; maximo 20MB</p>
+          <p style="margin-top:0.4rem;font-size:0.68rem;color:var(--muted);">PDF, JPG, XLSX &mdash; max. 10 MB</p>
         </div>
-        <div style="margin-top:1rem;background:rgba(0,229,195,0.06);border:1px solid rgba(0,229,195,0.15);border-radius:10px;padding:0.75rem;font-size:0.75rem;">
-          <span style="color:var(--accent);font-weight:600;">&#10003; factura_marzo.pdf</span>
-          <span style="color:var(--muted);float:right;">95% confianza</span>
+        <div style="margin-top:1rem;background:rgba(0,229,195,0.05);border:1px solid rgba(0,229,195,0.12);border-radius:10px;padding:0.75rem;font-size:0.75rem;">
+          <span style="color:var(--accent);font-weight:600;">Procesado: factura_marzo.pdf</span>
+          <span style="color:var(--muted);float:right;">B/. 4,868.50</span>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="nichos reveal" id="nichos">
-  <p class="section-label">Industrias que atendemos</p>
-  <h2 class="section-title">Soluciones para tres sectores clave</h2>
-  <p class="section-sub">El mismo sistema, adaptado al vocabulario y necesidades de cada industria.</p>
-  <div class="nichos-grid">
-    <div class="nicho-card">
-      <div class="nicho-icon">&#128202;</div>
-      <p class="nicho-tag">Contabilidad &amp; Finanzas</p>
-      <h3>Cierra el mes en horas, no en dias</h3>
-      <p>Automatiza conciliaciones, reportes y procesamiento de facturas. La IA entiende tus documentos.</p>
-      <ul class="nicho-features">
-        <li>Extraccion automatica de datos de facturas</li>
-        <li>Deteccion de duplicados por hash MD5</li>
-        <li>Conciliacion bancaria automatica</li>
-        <li>Reportes mensuales en Excel</li>
-        <li>Alertas de anomalias en tiempo real</li>
+<section class="formatos reveal" id="formatos">
+  <p class="section-label">Que procesa el sistema</p>
+  <h2 class="section-title">Compras, ventas y cumplimiento fiscal</h2>
+  <p class="section-sub">El sistema maneja los dos flujos principales de facturacion y genera los reportes de apoyo para la DGI.</p>
+  <div class="formatos-grid">
+    <div class="formato-card">
+      <p class="formato-tag">Facturas de compra</p>
+      <h3>Control de gastos y proveedores</h3>
+      <p>Procesa tus facturas de compra, clasifica por categoria y genera el reporte F430 de compras para apoyo de declaracion de credito fiscal de ITBMS.</p>
+      <ul class="formato-list">
+        <li>Extraccion de proveedor, RUC, monto e ITBMS</li>
+        <li>Validacion de RUC contra e-Tax 2.0 DGI</li>
+        <li>Deteccion de facturas duplicadas</li>
+        <li>Clasificacion por categoria de gasto</li>
+        <li>Reporte F430 compras en Excel</li>
       </ul>
     </div>
-    <div class="nicho-card">
-      <div class="nicho-icon">&#128666;</div>
-      <p class="nicho-tag">Logistica &amp; Operaciones</p>
-      <h3>Control total de tu cadena de suministro</h3>
-      <p>Procesa facturas de proveedores, pedidos y entregas automaticamente. Visibilidad completa.</p>
-      <ul class="nicho-features">
-        <li>Procesamiento de facturas de proveedores</li>
-        <li>Control de ordenes de compra</li>
-        <li>Seguimiento automatico de entregas</li>
-        <li>Dashboard de gastos por proveedor</li>
-        <li>Notificaciones de pagos pendientes</li>
+    <div class="formato-card">
+      <p class="formato-tag">Facturas de venta</p>
+      <h3>Registro de ingresos y clientes</h3>
+      <p>Registra tus ventas, lleva el control por cliente y genera el reporte F430 de ventas para apoyo de declaracion de debito fiscal de ITBMS.</p>
+      <ul class="formato-list">
+        <li>Registro de cliente, RUC y monto de venta</li>
+        <li>Control de estado por factura</li>
+        <li>Totales por cliente y por periodo</li>
+        <li>Reporte F430 ventas en Excel</li>
+        <li>Exportacion directa descargable</li>
       </ul>
     </div>
-    <div class="nicho-card">
-      <div class="nicho-icon">&#128188;</div>
-      <p class="nicho-tag">Ventas &amp; Facturacion</p>
-      <h3>Mas tiempo vendiendo, menos en papeleo</h3>
-      <p>Genera y procesa facturas de venta automaticamente. Tu equipo enfocado en cerrar negocios.</p>
-      <ul class="nicho-features">
-        <li>Procesamiento de facturas emitidas</li>
-        <li>Seguimiento de cuentas por cobrar</li>
-        <li>Reportes de ventas por cliente</li>
-        <li>Alertas de facturas vencidas</li>
-        <li>Export directo a tu sistema contable</li>
+    <div class="formato-card">
+      <p class="formato-tag">Formatos aceptados</p>
+      <h3>PDF, imagenes y hojas de calculo</h3>
+      <p>El sistema acepta los formatos mas comunes. No necesitas convertir nada antes de subir.</p>
+      <ul class="formato-list">
+        <li>PDF (facturas escaneadas o digitales)</li>
+        <li>Imagenes JPG, PNG y WEBP</li>
+        <li>Excel XLSX y XLS</li>
+        <li>Archivos de texto TXT y XML</li>
+        <li>Maximo 10 MB por archivo</li>
       </ul>
     </div>
   </div>
@@ -508,29 +471,29 @@
 
 <section class="dashboard-preview reveal">
   <div class="dash-inner">
-    <p class="section-label">Dashboard en vivo</p>
+    <p class="section-label">Dashboard</p>
     <h2 class="section-title">Lo que ve tu cliente al entrar</h2>
-    <p class="section-sub">Un panel claro con todas sus facturas, montos, graficos y la opcion de descargar su Excel actualizado.</p>
+    <p class="section-sub">Un panel con sus facturas, montos, estado de cada documento y la opcion de descargar su Excel actualizado.</p>
     <div class="dash-mockup">
       <div class="dash-header">
         <div class="dash-title">Dashboard &mdash; Sistema de Facturas</div>
-        <div class="dash-badge">&#9679; En vivo</div>
+        <div class="dash-badge">activo</div>
       </div>
       <div class="dash-body">
         <div class="dash-metrics">
           <div class="dash-metric"><div class="dash-metric-label">Total Facturas</div><div class="dash-metric-value">24</div></div>
-          <div class="dash-metric"><div class="dash-metric-label">Monto Total</div><div class="dash-metric-value green">$412,840</div></div>
-          <div class="dash-metric"><div class="dash-metric-label">Confianza Promedio</div><div class="dash-metric-value blue">93.4%</div></div>
+          <div class="dash-metric"><div class="dash-metric-label">Monto Total</div><div class="dash-metric-value green">B/. 412,840</div></div>
+          <div class="dash-metric"><div class="dash-metric-label">ITBMS Total</div><div class="dash-metric-value blue">B/. 28,899</div></div>
           <div class="dash-metric"><div class="dash-metric-label">Proveedores</div><div class="dash-metric-value amber">8</div></div>
         </div>
         <div class="dash-table">
           <div class="dash-table-header">
-            <span>Archivo</span><span>Proveedor</span><span>Monto</span><span>Fecha</span><span>Confianza</span>
+            <span>Archivo</span><span>Proveedor</span><span>Monto</span><span>Fecha</span><span>Estado</span>
           </div>
-          <div class="dash-row"><span>factura_10.pdf</span><span class="proveedor">Distribuidora El Istmo</span><span class="monto">$4,868.50</span><span>08/05/2025</span><span><div class="conf-bar"><div class="conf-fill" style="width:95%"></div></div></span></div>
-          <div class="dash-row"><span>factura_09.pdf</span><span class="proveedor">HeavyMachinery S.A.</span><span class="monto">$204,680</span><span>20/05/2025</span><span><div class="conf-bar"><div class="conf-fill" style="width:95%"></div></div></span></div>
-          <div class="dash-row"><span>factura_08.xlsx</span><span class="proveedor">TechStore S.A.</span><span class="monto">$416.50</span><span>15/11/2024</span><span><div class="conf-bar"><div class="conf-fill" style="width:95%"></div></div></span></div>
-          <div class="dash-row"><span>factura_07.txt</span><span class="proveedor">MedTech Solutions</span><span class="monto">$1,028,500</span><span>19/05/2025</span><span><div class="conf-bar"><div class="conf-fill" style="width:95%"></div></div></span></div>
+          <div class="dash-row"><span>factura_10.pdf</span><span class="proveedor">Distribuidora El Istmo</span><span class="monto">B/. 4,868.50</span><span>08/05/2025</span><span style="color:var(--accent);font-size:0.75rem;">aprobada</span></div>
+          <div class="dash-row"><span>factura_09.pdf</span><span class="proveedor">HeavyMachinery S.A.</span><span class="monto">B/. 204,680</span><span>20/05/2025</span><span style="color:var(--accent);font-size:0.75rem;">aprobada</span></div>
+          <div class="dash-row"><span>factura_08.xlsx</span><span class="proveedor">TechStore S.A.</span><span class="monto">B/. 416.50</span><span>15/11/2024</span><span style="color:var(--accent3);font-size:0.75rem;">revision</span></div>
+          <div class="dash-row"><span>factura_07.pdf</span><span class="proveedor">MedTech Solutions</span><span class="monto">B/. 1,028.50</span><span>19/05/2025</span><span style="color:var(--accent);font-size:0.75rem;">aprobada</span></div>
         </div>
       </div>
     </div>
@@ -539,86 +502,71 @@
 
 <section class="pricing reveal" id="precios">
   <p class="section-label">Planes</p>
-  <h2 class="section-title">Inversion que se paga sola</h2>
-  <p class="section-sub">Elige el plan segun el volumen de facturas y cantidad de usuarios de tu empresa.</p>
+  <h2 class="section-title">Precio segun el tamano de tu operacion</h2>
+  <p class="section-sub">Implementacion unica o suscripcion mensual. Sin contratos anuales obligatorios.</p>
   <div class="pricing-grid">
     <div class="price-card">
-      <p class="price-tier">Basico</p>
-      <p class="price-name">Starter</p>
+      <p class="price-tier">Una empresa</p>
+      <p class="price-name">Portal Individual</p>
       <div class="price-amount"><sup>$</sup>400</div>
-      <p class="price-period">pago unico &middot; un proyecto</p>
+      <p class="price-period">pago unico &middot; incluye configuracion</p>
       <ul class="price-features">
-        <li>1 empresa / portal</li>
-        <li>Procesamiento de PDF y TXT</li>
-        <li>Base de datos SQLite</li>
-        <li>Excel actualizado automatico</li>
-        <li>Notificaciones Telegram</li>
-        <li>1 mes de soporte</li>
+        <li>1 empresa con portal propio</li>
+        <li>Procesamiento de PDF, imagenes y Excel</li>
+        <li>Base de datos SQLite por cliente</li>
+        <li>Excel actualizado automaticamente</li>
+        <li>Reportes F430 compras y ventas</li>
+        <li>Validacion de RUC contra DGI</li>
+        <li>Notificaciones por Telegram</li>
+        <li>1 mes de soporte incluido</li>
       </ul>
-      <a href="#contacto" class="price-btn">Comenzar &rarr;</a>
+      <a href="#contacto" class="price-btn">Hablar con nosotros &rarr;</a>
+      <p class="price-note">Soporte adicional disponible por separado.</p>
     </div>
     <div class="price-card featured">
-      <span class="price-badge">Mas popular</span>
-      <p class="price-tier">Crecimiento</p>
-      <p class="price-name">Business</p>
-      <div class="price-amount"><sup>$</sup>600</div>
-      <p class="price-period">por mes &middot; incluye mantenimiento</p>
+      <span class="price-badge">Mas solicitado</span>
+      <p class="price-tier">Varias empresas</p>
+      <p class="price-name">Multi-cliente</p>
+      <div class="price-amount" style="font-size:2rem">A consultar</div>
+      <p class="price-period">segun cantidad de portales</p>
       <ul class="price-features">
-        <li>Hasta 10 empresas / portales</li>
-        <li>PDF, Excel, fotos de facturas</li>
-        <li>Dashboard multi-cliente</li>
-        <li>Deteccion de duplicados</li>
-        <li>Alertas inteligentes de anomalias</li>
-        <li>Resumen mensual automatico</li>
+        <li>Multiples empresas en un solo servidor</li>
+        <li>Cada cliente con portal y datos separados</li>
+        <li>Todas las funciones del plan individual</li>
+        <li>Administracion centralizada de usuarios</li>
+        <li>Mantenimiento mensual incluido</li>
         <li>Soporte prioritario</li>
       </ul>
-      <a href="#contacto" class="price-btn primary">Empezar ahora &rarr;</a>
-    </div>
-    <div class="price-card">
-      <p class="price-tier">Empresa</p>
-      <p class="price-name">Enterprise</p>
-      <div class="price-amount" style="font-size:2rem">Personalizado</div>
-      <p class="price-period">implementacion completa a medida</p>
-      <ul class="price-features">
-        <li>Empresas ilimitadas</li>
-        <li>Integracion con tu ERP / CRM</li>
-        <li>Portal web con login propio</li>
-        <li>API para sistemas existentes</li>
-        <li>SLA garantizado</li>
-        <li>Capacitacion del equipo</li>
-        <li>Estrategia anual de automatizacion</li>
-      </ul>
-      <a href="#contacto" class="price-btn">Hablar con un experto &rarr;</a>
+      <a href="#contacto" class="price-btn primary">Solicitar cotizacion &rarr;</a>
+      <p class="price-note">El precio depende del numero de empresas y volumen de facturas.</p>
     </div>
   </div>
 </section>
 
 <section class="cta-section reveal" id="contacto">
-  <h2>Listo para automatizar<br>tu empresa?</h2>
-  <p>Contactanos</p>
+  <h2>Conversemos sobre<br>tu operacion</h2>
+  <p>Cuéntanos cuantas empresas manejas y el volumen de facturas mensual. Te respondemos con una propuesta concreta.</p>
   <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-    <a href="mailto:automatia.pa@outlook.es" class="btn-primary">Correo</a>
-    <a href="https://wa.me/" class="btn-ghost">Escribir por WhatsApp &rarr;</a>
+    <a href="mailto:automatia.pa@outlook.es" class="btn-primary">Escribir por correo</a>
+    <a href="https://wa.me/50769000000" class="btn-ghost">WhatsApp &rarr;</a>
   </div>
 </section>
 
 <footer>
-  <p>&copy; 2025 AutomatIA. Todos los derechos reservados.</p>
+  <p>&copy; 2025 AutomatIA. Panama.</p>
   <div class="footer-links">
-    <a href="#">Terminos</a>
-    <a href="#">Privacidad</a>
-    <a href="#">Contacto</a>
+    <a href="/terminos">Terminos</a>
+    <a href="/privacidad">Privacidad</a>
+    <a href="mailto:automatia.pa@outlook.es">Contacto</a>
   </div>
 </footer>
 
 <script nonce="{{ csp_nonce() }}">
-  // ── Scroll reveal ──
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("visible"); });
   }, { threshold: 0.1 });
   document.querySelectorAll(".reveal").forEach(el => observer.observe(el));
 
-  // ── Login dropdown toggle ──
   const loginToggle   = document.getElementById('loginToggle');
   const loginDropdown = document.getElementById('loginDropdown');
 
@@ -628,28 +576,21 @@
       const isOpen = loginDropdown.classList.toggle('open');
       loginToggle.classList.toggle('open', isOpen);
       if (isOpen) {
-        // auto-focus primer campo
         setTimeout(() => loginDropdown.querySelector('input[type=email]').focus(), 50);
       }
     });
-
-    // Cerrar al click fuera
     document.addEventListener('click', (e) => {
       if (!loginDropdown.contains(e.target) && e.target !== loginToggle) {
         loginDropdown.classList.remove('open');
         loginToggle.classList.remove('open');
       }
     });
-
-    // Cerrar con Escape
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         loginDropdown.classList.remove('open');
         loginToggle.classList.remove('open');
       }
     });
-
-    // Abrir automáticamente si Flask redirigió con error (flash message presente)
     const hasFlash = loginDropdown.querySelector('.flash-inline');
     if (hasFlash) {
       loginDropdown.classList.add('open');
