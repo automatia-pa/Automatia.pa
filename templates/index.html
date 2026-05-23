@@ -20,7 +20,7 @@
   .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.08; }
   .orb-1 { width: 600px; height: 600px; background: var(--accent); top: -200px; left: -100px; }
   .orb-2 { width: 500px; height: 500px; background: var(--accent2); bottom: 200px; right: -150px; }
-
+ 
   /* NAV */
   nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 200;
@@ -34,7 +34,7 @@
   nav ul { display: flex; gap: 2.5rem; list-style: none; }
   nav ul a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
   nav ul a:hover { color: var(--text); }
-
+ 
   .nav-login-wrap { position: relative; }
   .nav-login-btn {
     background: var(--accent); color: #030F0D;
@@ -48,7 +48,7 @@
   .nav-login-btn:hover { opacity: 0.88; transform: translateY(-1px); }
   .nav-login-btn svg { transition: transform 0.3s; }
   .nav-login-btn.open svg { transform: rotate(180deg); }
-
+ 
   .nav-login-dropdown {
     position: absolute; top: calc(100% + 0.75rem); right: 0;
     width: 320px;
@@ -88,7 +88,7 @@
     transition: opacity 0.2s, transform 0.2s;
   }
   .dd-submit:hover { opacity: 0.9; transform: translateY(-1px); }
-
+ 
   /* HERO */
   section { position: relative; z-index: 1; }
   .hero { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 8rem 2rem 4rem; }
@@ -104,7 +104,7 @@
   .btn-primary:hover { transform: translateY(-2px); opacity: 0.9; }
   .btn-ghost { border: 1px solid var(--border); color: var(--text); padding: 0.85rem 2.2rem; border-radius: 100px; text-decoration: none; font-weight: 400; font-size: 0.95rem; transition: border-color 0.2s, background 0.2s; display: inline-block; background: rgba(255,255,255,0.03); }
   .btn-ghost:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); }
-
+ 
   .hero-login-card {
     animation: fadeUp 0.8s 0.4s ease both;
     background: var(--surface); border: 1px solid rgba(0,229,195,0.15);
@@ -113,13 +113,13 @@
   }
   .hero-login-card h3 { font-family: var(--font-head); font-size: 1rem; font-weight: 700; text-align: center; margin-bottom: 0.25rem; }
   .hero-login-card p { font-size: 0.78rem; color: var(--muted); text-align: center; margin-bottom: 1.25rem; }
-
+ 
   /* COMO FUNCIONA */
   .como-funciona { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
   .section-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 1rem; }
   .section-title { font-family: var(--font-head); font-size: clamp(1.8rem, 3.5vw, 2.8rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; max-width: 580px; margin-bottom: 1rem; }
   .section-sub { color: var(--muted); max-width: 500px; font-weight: 300; margin-bottom: 3.5rem; line-height: 1.75; font-size: 0.95rem; }
-
+ 
   .flujo { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-bottom: 4rem; }
   .flujo-paso { background: var(--surface); padding: 2rem 1.25rem; text-align: center; position: relative; transition: background 0.3s; }
   .flujo-paso:hover { background: var(--surface2); }
@@ -127,7 +127,7 @@
   .flujo-num { width: 32px; height: 32px; border-radius: 50%; background: rgba(0,229,195,0.1); border: 1px solid rgba(0,229,195,0.2); color: var(--accent); font-size: 0.78rem; font-weight: 700; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; }
   .flujo-paso h4 { font-family: var(--font-head); font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem; }
   .flujo-paso p { font-size: 0.78rem; color: var(--muted); line-height: 1.55; }
-
+ 
   /* PORTAL */
   .portal { padding: 6rem 2rem; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
   .portal-inner { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
@@ -152,7 +152,7 @@
   .feat-marker.amber { background: var(--accent3); }
   .portal-feat h4 { font-family: var(--font-head); font-size: 0.95rem; font-weight: 700; margin-bottom: 0.3rem; }
   .portal-feat p { color: var(--muted); font-size: 0.875rem; font-weight: 300; line-height: 1.65; }
-
+ 
   /* QUE PROCESA */
   .formatos { padding: 6rem 2rem; max-width: 1100px; margin: 0 auto; }
   .formatos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-top: 3rem; }
@@ -170,7 +170,7 @@
   .formato-card:nth-child(1) .formato-list li::before { color: var(--accent); }
   .formato-card:nth-child(2) .formato-list li::before { color: var(--accent2); }
   .formato-card:nth-child(3) .formato-list li::before { color: var(--accent3); }
-
+ 
   /* DASHBOARD PREVIEW */
   .dashboard-preview { padding: 6rem 2rem; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
   .dash-inner { max-width: 1100px; margin: 0 auto; }
@@ -194,7 +194,7 @@
   .monto { color: var(--accent) !important; font-weight: 600; }
   .conf-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; width: 60px; overflow: hidden; }
   .conf-fill { height: 100%; background: var(--accent); border-radius: 2px; }
-
+ 
   /* PRECIOS */
   .pricing { padding: 6rem 2rem; max-width: 1000px; margin: 0 auto; }
   .pricing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-top: 3.5rem; }
@@ -215,22 +215,22 @@
   .price-btn.primary { background: var(--accent); color: #030F0D; border-color: var(--accent); }
   .price-btn.primary:hover { opacity: 0.88; }
   .price-note { font-size: 0.78rem; color: var(--muted); margin-top: 0.75rem; text-align: center; line-height: 1.5; }
-
+ 
   /* CTA */
   .cta-section { padding: 8rem 2rem; text-align: center; position: relative; overflow: hidden; }
   .cta-section::before { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 700px; height: 350px; background: radial-gradient(ellipse, rgba(0,229,195,0.06) 0%, transparent 70%); pointer-events: none; }
   .cta-section h2 { font-family: var(--font-head); font-size: clamp(2.2rem, 4.5vw, 3.5rem); font-weight: 800; letter-spacing: -0.03em; max-width: 620px; margin: 0 auto 1.25rem; line-height: 1.08; }
   .cta-section p { color: var(--muted); font-size: 1rem; font-weight: 300; max-width: 440px; margin: 0 auto 2.5rem; line-height: 1.7; }
-
+ 
   footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; }
   footer p { color: var(--muted); font-size: 0.82rem; }
   .footer-links { display: flex; gap: 2rem; }
   .footer-links a { color: var(--muted); text-decoration: none; font-size: 0.82rem; transition: color 0.2s; }
   .footer-links a:hover { color: var(--text); }
-
+ 
   .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s ease, transform 0.7s ease; }
   .reveal.visible { opacity: 1; transform: translateY(0); }
-
+ 
   @media (max-width: 900px) {
     nav ul { display: none; }
     .formatos-grid, .pricing-grid, .portal-inner { grid-template-columns: 1fr; }
@@ -248,10 +248,10 @@
 </style>
 </head>
 <body>
-
+ 
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
-
+ 
 <nav>
   <a href="#" class="logo">Automat<span>IA</span></a>
   <ul>
@@ -260,7 +260,7 @@
     <li><a href="#precios">Precios</a></li>
     <li><a href="#contacto">Contacto</a></li>
   </ul>
-
+ 
   <div class="nav-login-wrap">
     <button class="nav-login-btn" id="loginToggle" type="button">
       Iniciar sesion
@@ -268,17 +268,17 @@
         <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
-
+ 
     <div class="nav-login-dropdown" id="loginDropdown">
       <div class="dropdown-logo">Automat<span>IA</span></div>
       <p class="dropdown-sub">Ingresa a tu portal</p>
-
+ 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
           <div class="flash-inline {{ category }}">{{ message }}</div>
         {% endfor %}
       {% endwith %}
-
+ 
       <form method="POST" action="/login" class="dd-form" id="loginForm">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <div>
@@ -294,7 +294,7 @@
     </div>
   </div>
 </nav>
-
+ 
 <section class="hero">
   <div class="hero-badge"><div class="dot"></div>Panama — procesamiento fiscal con IA</div>
   <h1>De la factura al reporte<br>sin tocar un <em>teclado</em></h1>
@@ -303,7 +303,7 @@
     <a href="#contacto" class="btn-primary">Hablar con nosotros</a>
     <a href="#como-funciona" class="btn-ghost">Como funciona &rarr;</a>
   </div>
-
+ 
   <div class="hero-login-card">
     <h3>Automat<span style="color:var(--accent)">IA</span></h3>
     <p>Ingresa a tu cuenta</p>
@@ -321,7 +321,7 @@
     </form>
   </div>
 </section>
-
+ 
 <section class="como-funciona reveal" id="como-funciona">
   <p class="section-label">El proceso</p>
   <h2 class="section-title">Cinco pasos, ninguno manual</h2>
@@ -358,7 +358,7 @@
     </div>
   </div>
 </section>
-
+ 
 <section class="portal reveal" id="portal">
   <div class="portal-inner">
     <div>
@@ -424,7 +424,7 @@
     </div>
   </div>
 </section>
-
+ 
 <section class="formatos reveal" id="formatos">
   <p class="section-label">Que procesa el sistema</p>
   <h2 class="section-title">Compras, ventas y cumplimiento fiscal</h2>
@@ -468,7 +468,7 @@
     </div>
   </div>
 </section>
-
+ 
 <section class="dashboard-preview reveal">
   <div class="dash-inner">
     <p class="section-label">Dashboard</p>
@@ -499,50 +499,52 @@
     </div>
   </div>
 </section>
-
+ 
 <section class="pricing reveal" id="precios">
   <p class="section-label">Planes</p>
   <h2 class="section-title">Precio segun el tamano de tu operacion</h2>
   <p class="section-sub">Implementacion unica o suscripcion mensual. Sin contratos anuales obligatorios.</p>
   <div class="pricing-grid">
     <div class="price-card">
-      <p class="price-tier">Una empresa</p>
-      <p class="price-name">Portal Individual</p>
-      <div class="price-amount"><sup>$</sup>400</div>
-      <p class="price-period">pago unico &middot; incluye configuracion</p>
+      <p class="price-tier">Plan Basico</p>
+      <p class="price-name">Basico</p>
+      <div class="price-amount"><sup>$</sup>39<span style="font-size:1.4rem;font-weight:500;color:var(--muted)">.99</span></div>
+      <p class="price-period">por mes &middot; sin contrato anual</p>
       <ul class="price-features">
-        <li>1 empresa con portal propio</li>
-        <li>Procesamiento de PDF, imagenes y Excel</li>
-        <li>Base de datos SQLite por cliente</li>
-        <li>Excel actualizado automaticamente</li>
-        <li>Reportes F430 compras y ventas</li>
-        <li>Validacion de RUC contra DGI</li>
+        <li>Portal privado para tu empresa</li>
+        <li>Procesamiento de facturas con IA</li>
+        <li>PDF, imagenes JPG/PNG y Excel</li>
+        <li>Extraccion de proveedor, RUC, monto e ITBMS</li>
+        <li>Validacion de RUC contra e-Tax 2.0 DGI</li>
+        <li>Excel de compras actualizado automaticamente</li>
+        <li>Reporte F430 compras para declaracion DGI</li>
         <li>Notificaciones por Telegram</li>
-        <li>1 mes de soporte incluido</li>
       </ul>
-      <a href="#contacto" class="price-btn">Hablar con nosotros &rarr;</a>
-      <p class="price-note">Soporte adicional disponible por separado.</p>
+      <a href="#contacto" class="price-btn">Comenzar ahora &rarr;</a>
+      <p class="price-note">Primer mes gratis para nuevos clientes.</p>
     </div>
     <div class="price-card featured">
       <span class="price-badge">Mas solicitado</span>
-      <p class="price-tier">Varias empresas</p>
-      <p class="price-name">Multi-cliente</p>
-      <div class="price-amount" style="font-size:2rem">A consultar</div>
-      <p class="price-period">segun cantidad de portales</p>
+      <p class="price-tier">Plan Pro</p>
+      <p class="price-name">Pro</p>
+      <div class="price-amount"><sup>$</sup>59<span style="font-size:1.4rem;font-weight:500;color:var(--muted)">.99</span></div>
+      <p class="price-period">por mes &middot; sin contrato anual</p>
       <ul class="price-features">
-        <li>Multiples empresas en un solo servidor</li>
-        <li>Cada cliente con portal y datos separados</li>
-        <li>Todas las funciones del plan individual</li>
-        <li>Administracion centralizada de usuarios</li>
-        <li>Mantenimiento mensual incluido</li>
-        <li>Soporte prioritario</li>
+        <li>Todo lo del plan Basico</li>
+        <li>Modulo completo de ventas</li>
+        <li>Registro de clientes y facturas emitidas</li>
+        <li>Cruce de IVA compras vs. ventas</li>
+        <li>Reporte F430 ventas para declaracion DGI</li>
+        <li>Excel de ventas descargable</li>
+        <li>Autenticacion 2FA para mayor seguridad</li>
+        <li>Soporte prioritario por WhatsApp</li>
       </ul>
-      <a href="#contacto" class="price-btn primary">Solicitar cotizacion &rarr;</a>
-      <p class="price-note">El precio depende del numero de empresas y volumen de facturas.</p>
+      <a href="#contacto" class="price-btn primary">Comenzar ahora &rarr;</a>
+      <p class="price-note">Primer mes gratis para nuevos clientes.</p>
     </div>
   </div>
 </section>
-
+ 
 <section class="cta-section reveal" id="contacto">
   <h2>Conversemos sobre<br>tu operacion</h2>
   <p>Cuéntanos cuantas empresas manejas y el volumen de facturas mensual. Te respondemos con una propuesta concreta.</p>
@@ -551,7 +553,7 @@
     <a href="https://wa.me/50769000000" class="btn-ghost">WhatsApp &rarr;</a>
   </div>
 </section>
-
+ 
 <footer>
   <p>&copy; 2025 AutomatIA. Panama.</p>
   <div class="footer-links">
@@ -560,16 +562,16 @@
     <a href="mailto:automatia.pa@outlook.es">Contacto</a>
   </div>
 </footer>
-
+ 
 <script nonce="{{ csp_nonce() }}">
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("visible"); });
   }, { threshold: 0.1 });
   document.querySelectorAll(".reveal").forEach(el => observer.observe(el));
-
+ 
   const loginToggle   = document.getElementById('loginToggle');
   const loginDropdown = document.getElementById('loginDropdown');
-
+ 
   if (loginToggle && loginDropdown) {
     loginToggle.addEventListener('click', (e) => {
       e.stopPropagation();
