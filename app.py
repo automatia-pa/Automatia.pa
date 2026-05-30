@@ -1428,6 +1428,238 @@ def eliminar_venta():
     return redirect(url_for("ventas"))
 
 
+# ── INGRESO MANUAL DE FACTURA DE COMPRA ──────────────────────
+@app.route("/factura/nueva", methods=["POST"])
+@login_required
+def nueva_factura_manual():
+    """
+    Crea una nueva factura de compra ingresada manualmente (sin archivo).
+    Los datos vienen del formulario del dashboard.
+    """
+    validate_csrf()
+
+    proveedor   = request.form.get("proveedor",   "").strip()[:200]
+    ruc         = request.form.get("ruc",         "").strip()[:30]
+    fecha       = request.form.get("fecha",       "").strip()[:10]
+    descripcion = request.form.get("descripcion", "").strip()[:300]
+    moneda      = request.form.get("moneda",      "USD").strip()[:5]
+    categoria   = request.form.get("categoria",   "Otros").strip()
+    tipo_doc    = request.form.get("tipo_doc",    "Factura").strip()[:40]
+
+    monedas_validas    = {"USD", "PAB", "EUR", "COP", "MXN", "PEN", "CLP", "ARS", "BRL"}
+    categorias_validas = {
+        "Servicios", "Materiales y Suministros", "Transporte y Logistica",
+        "Tecnologia y Software", "Nomina y RRHH", "Alquiler e Inmuebles",
+        "Publicidad y Marketing", "Impuestos y Tasas", "Alimentacion", "Otros"
+    }
+    tipos_validos = {
+        "Factura", "Nota de Crédito", "Nota de Débito",
+        "Factura de Importación", "Factura de Exportación", "Recibo", "Otro"
+    }
+
+    if moneda not in monedas_validas:     moneda   = "USD"
+    if categoria not in categorias_validas: categoria = "Otros"
+    if tipo_doc not in tipos_validos:     tipo_doc = "Factura"
+
+    def parse_float(key):
+        val = request.form.get(key, "").strip().replace(",", ".")
+        if not val:
+            return None
+        try:
+            v = float(val)
+            return v if 0 <= v <= 10_000_000 else None
+        except ValueError:
+            return None
+
+    monto_total = parse_float("monto_total")
+    itbms       = parse_float("itbms")
+    subtotal    = parse_float("subtotal")
+
+    if not proveedor:
+        flash("El proveedor no puede estar vacío", "danger")
+        return redirect(url_for("dashboard"))
+    if monto_total is None or monto_total <= 0:
+        flash("El monto total debe ser mayor que cero", "danger")
+        return redirect(url_for("dashboard"))
+
+    # Si el subtotal no se indicó, calcularlo desde monto e ITBMS
+    if subtotal is None and monto_total and itbms is not None:
+        subtotal = round(monto_total - itbms, 2)
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    os.makedirs(rutas["base"], exist_ok=True)
+
+    from facturas_processor import init_db, exportar_excel, verificar_itbms
+    init_db(rutas["db"])
+
+    # Generar un nombre de "archivo" único para facturas manuales
+    import hashlib as _hl
+    ts_str    = datetime.now().isoformat()
+    fake_name = f"manual_{_hl.md5((proveedor + ts_str).encode()).hexdigest()[:8]}.txt"
+    fake_hash = _hl.md5((proveedor + str(monto_total) + ts_str).encode()).hexdigest()
+
+    # Advertencias fiscales básicas
+    advertencias = verificar_itbms({
+        "subtotal":    subtotal or (monto_total - (itbms or 0)),
+        "itbms":       itbms,
+        "monto_total": monto_total,
+        "descripcion": descripcion,
+    })
+    adv_str = " | ".join(advertencias) if advertencias else None
+
+    try:
+        with sqlite3.connect(rutas["db"]) as conn:
+            conn.execute("""
+                INSERT INTO facturas
+                  (archivo, hash, proveedor, ruc, fecha, monto_total, subtotal,
+                   itbms, moneda, categoria, tipo_doc, descripcion, fuente,
+                   confianza, estado, advertencias_fiscales, fecha_procesamiento)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'manual',100,'pendiente',?,?)
+            """, (
+                fake_name, fake_hash, proveedor, ruc or None, fecha or None,
+                monto_total, subtotal, itbms, moneda, categoria, tipo_doc,
+                descripcion or None, adv_str, datetime.now().isoformat(),
+            ))
+    except sqlite3.IntegrityError:
+        flash("Ya existe una factura con esos datos exactos (posible duplicado)", "warning")
+        return redirect(url_for("dashboard"))
+
+    try:
+        exportar_excel(rutas["db"], rutas["excel"])
+    except Exception:
+        pass
+
+    flash(f"✅ Factura de '{proveedor}' agregada manualmente", "success")
+    return redirect(url_for("dashboard"))
+
+
+# ── INGRESO MANUAL DE VENTA ───────────────────────────────────
+@app.route("/ventas/nueva", methods=["POST"])
+@login_required
+def nueva_venta_manual():
+    """
+    Crea una nueva venta ingresada manualmente (sin archivo).
+    """
+    validate_csrf()
+
+    cliente     = request.form.get("cliente",     "").strip()[:200]
+    ruc_cliente = request.form.get("ruc_cliente", "").strip()[:30]
+    num_factura = request.form.get("num_factura", "").strip()[:80]
+    fecha       = request.form.get("fecha",       "").strip()[:10]
+    descripcion = request.form.get("descripcion", "").strip()[:300]
+    moneda      = request.form.get("moneda",      "USD").strip()[:5]
+    categoria   = request.form.get("categoria",   "Otros").strip()
+
+    monedas_validas    = {"USD", "PAB", "EUR", "COP", "MXN", "PEN", "CLP", "ARS", "BRL"}
+    categorias_validas = {
+        "Servicios", "Materiales y Suministros", "Transporte y Logistica",
+        "Tecnologia y Software", "Nomina y RRHH", "Alquiler e Inmuebles",
+        "Publicidad y Marketing", "Impuestos y Tasas", "Alimentacion", "Otros"
+    }
+    if moneda not in monedas_validas:       moneda    = "USD"
+    if categoria not in categorias_validas: categoria = "Otros"
+
+    def pf(key):
+        v = request.form.get(key, "").strip().replace(",", ".")
+        if not v: return None
+        try:
+            val = float(v)
+            return val if 0 <= val <= 10_000_000 else None
+        except ValueError:
+            return None
+
+    monto_total = pf("monto_total")
+    itbms       = pf("itbms")
+    subtotal    = pf("subtotal")
+
+    if not cliente:
+        flash("El nombre del cliente no puede estar vacío", "danger")
+        return redirect(url_for("ventas"))
+    if monto_total is None or monto_total <= 0:
+        flash("El monto total debe ser mayor que cero", "danger")
+        return redirect(url_for("ventas"))
+
+    if subtotal is None and monto_total and itbms is not None:
+        subtotal = round(monto_total - itbms, 2)
+
+    rutas = get_rutas_cliente(current_user.nombre)
+    os.makedirs(rutas["base"], exist_ok=True)
+
+    from facturas_processor import init_db, exportar_excel_ventas, verificar_itbms
+    init_db(rutas["db"])
+
+    import hashlib as _hl
+    ts_str    = datetime.now().isoformat()
+    fake_name = f"manual_v_{_hl.md5((cliente + ts_str).encode()).hexdigest()[:8]}.txt"
+    fake_hash = _hl.md5((cliente + str(monto_total) + ts_str).encode()).hexdigest()
+
+    advertencias = verificar_itbms({
+        "subtotal":    subtotal or (monto_total - (itbms or 0)),
+        "itbms":       itbms,
+        "monto_total": monto_total,
+        "descripcion": descripcion,
+    })
+    adv_str = " | ".join(advertencias) if advertencias else None
+
+    try:
+        with sqlite3.connect(rutas["db"]) as conn:
+            conn.execute("""
+                INSERT INTO ventas
+                  (archivo, hash, cliente, ruc_cliente, numero_factura, fecha,
+                   monto_total, subtotal, itbms, moneda, categoria, descripcion,
+                   fuente, confianza, estado, advertencias_fiscales, fecha_procesamiento)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'manual',100,'pendiente',?,?)
+            """, (
+                fake_name, fake_hash, cliente, ruc_cliente or None,
+                num_factura or None, fecha or None,
+                monto_total, subtotal, itbms, moneda, categoria,
+                descripcion or None, adv_str, datetime.now().isoformat(),
+            ))
+    except sqlite3.IntegrityError:
+        flash("Ya existe una venta con esos datos exactos (posible duplicado)", "warning")
+        return redirect(url_for("ventas"))
+
+    try:
+        exportar_excel_ventas(rutas["db"], rutas["excel_ventas"])
+    except Exception:
+        pass
+
+    flash(f"✅ Venta de '{cliente}' agregada manualmente", "success")
+    return redirect(url_for("ventas"))
+
+
+# ── TEST TELEGRAM (solo admin) ────────────────────────────────
+@app.route("/admin/test-telegram")
+@login_required
+def test_telegram():
+    """
+    Endpoint de diagnóstico para probar la conexión a Telegram.
+    Solo accesible si tienes la ADMIN_SECRET configurada, pasándola
+    como ?key=TU_CLAVE en la URL.
+    """
+    if not ADMIN_SECRET or request.args.get("key") != ADMIN_SECRET:
+        abort(403)
+
+    from facturas_processor import enviar_telegram
+    ok = enviar_telegram(
+        f"🔔 <b>Test de conectividad</b>\n"
+        f"Portal: AutomatIA\n"
+        f"Usuario: {current_user.email}\n"
+        f"Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+    )
+    if ok:
+        return "✅ Telegram OK — mensaje enviado", 200
+    return (
+        "❌ Telegram falló. Revisa el archivo procesamiento.log en PythonAnywhere "
+        "para ver el error exacto. Posibles causas:\n"
+        "1. TELEGRAM_TOKEN o TELEGRAM_CHAT_ID no configurados en .env\n"
+        "2. PythonAnywhere plan gratuito bloquea api.telegram.org (necesitas plan Hacker+)\n"
+        "3. El bot no tiene permisos en el chat/canal indicado\n"
+        "4. Token o chat_id incorrectos",
+        200,
+    )
+
+
 # ── PÁGINAS LEGALES ───────────────────────────────────────────
 @app.route("/privacidad")
 def politica_privacidad():
