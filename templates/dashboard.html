@@ -333,7 +333,15 @@
  
   <!-- UPLOAD -->
   <div class="upload-section">
-    <h2>Subir Facturas</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem;">
+      <h2 style="margin-bottom:0;">Subir Facturas</h2>
+      <button type="button" id="btnNuevaFactura"
+              style="background:transparent;border:1px solid rgba(0,229,195,0.35);color:var(--accent);border-radius:100px;padding:0.5rem 1.1rem;font-size:0.85rem;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.2s;"
+              onmouseover="this.style.background='rgba(0,229,195,0.07)'"
+              onmouseout="this.style.background='transparent'">
+        ✏ Ingresar manualmente
+      </button>
+    </div>
     <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <div class="upload-zone" id="dropZone">
@@ -973,6 +981,111 @@ new Chart(document.getElementById('chartCantidad'), {
   });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') document.getElementById('deleteOverlay').classList.remove('open');
+  });
+</script>
+
+<!-- MODAL INGRESO MANUAL DE FACTURA DE COMPRA -->
+<div id="nuevaFacturaOverlay" class="modal-overlay">
+  <div class="modal-card wide" style="max-width:580px;max-height:90vh;overflow-y:auto;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">✏ Nueva factura de compra</div>
+        <div class="modal-sub">Ingresa los datos manualmente sin subir archivo</div>
+      </div>
+      <button class="modal-close" id="cerrarNuevaFactura">✕</button>
+    </div>
+    <form method="POST" action="/factura/nueva">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="edit-grid">
+        <div class="edit-field full">
+          <label>Proveedor *</label>
+          <input type="text" name="proveedor" placeholder="Ej: Cable Onda S.A." required maxlength="200" autofocus>
+        </div>
+        <div class="edit-field">
+          <label>RUC del proveedor</label>
+          <input type="text" name="ruc" placeholder="Ej: 8-123-45678" maxlength="30">
+        </div>
+        <div class="edit-field">
+          <label>Fecha de la factura</label>
+          <input type="date" name="fecha">
+        </div>
+        <div class="edit-field">
+          <label>Monto total *</label>
+          <input type="number" name="monto_total" placeholder="0.00" step="0.01" min="0.01" max="10000000" required>
+        </div>
+        <div class="edit-field">
+          <label>Subtotal (sin ITBMS)</label>
+          <input type="number" name="subtotal" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="edit-field">
+          <label>ITBMS</label>
+          <input type="number" name="itbms" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="edit-field">
+          <label>Moneda</label>
+          <select name="moneda">
+            <option value="USD" selected>USD — Dólar</option>
+            <option value="PAB">PAB — Balboa</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="COP">COP — Peso colombiano</option>
+            <option value="MXN">MXN — Peso mexicano</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label>Tipo de documento</label>
+          <select name="tipo_doc">
+            <option value="Factura" selected>Factura</option>
+            <option value="Nota de Crédito">Nota de Crédito</option>
+            <option value="Nota de Débito">Nota de Débito</option>
+            <option value="Factura de Importación">Factura de Importación</option>
+            <option value="Factura de Exportación">Factura de Exportación</option>
+            <option value="Recibo">Recibo</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+        <div class="edit-field full">
+          <label>Categoría</label>
+          <select name="categoria">
+            <option value="Servicios">Servicios</option>
+            <option value="Materiales y Suministros">Materiales y Suministros</option>
+            <option value="Transporte y Logistica">Transporte y Logística</option>
+            <option value="Tecnologia y Software">Tecnología y Software</option>
+            <option value="Nomina y RRHH">Nómina y RRHH</option>
+            <option value="Alquiler e Inmuebles">Alquiler e Inmuebles</option>
+            <option value="Publicidad y Marketing">Publicidad y Marketing</option>
+            <option value="Impuestos y Tasas">Impuestos y Tasas</option>
+            <option value="Alimentacion">Alimentación</option>
+            <option value="Otros" selected>Otros</option>
+          </select>
+        </div>
+        <div class="edit-field full">
+          <label>Descripción</label>
+          <input type="text" name="descripcion" placeholder="Ej: Servicio de internet enero 2025" maxlength="300">
+        </div>
+      </div>
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:0.5rem;">
+        <button type="button" class="btn-cancel" id="cancelarNuevaFactura">Cancelar</button>
+        <button type="submit" class="btn-guardar">Guardar factura</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce() }}">
+  // Modal ingreso manual compras
+  document.getElementById('btnNuevaFactura').addEventListener('click', function() {
+    document.getElementById('nuevaFacturaOverlay').classList.add('open');
+  });
+  ['cerrarNuevaFactura','cancelarNuevaFactura'].forEach(function(id) {
+    document.getElementById(id).addEventListener('click', function() {
+      document.getElementById('nuevaFacturaOverlay').classList.remove('open');
+    });
+  });
+  document.getElementById('nuevaFacturaOverlay').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('nuevaFacturaOverlay').classList.remove('open');
   });
 </script>
 
