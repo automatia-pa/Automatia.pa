@@ -91,25 +91,65 @@ logging.getLogger().addHandler(_handler)
 logging.getLogger().setLevel(logging.INFO)
 
 # ─────────────────────────────────────────
-def enviar_telegram(mensaje):
+def enviar_telegram(mensaje) -> bool:
+    """
+    Envía un mensaje a Telegram vía POST con body JSON.
+    Retorna True si tuvo éxito, False si falló.
+
+    Nota PythonAnywhere: el plan gratuito bloquea conexiones salientes
+    a la mayoría de hosts externos, incluyendo api.telegram.org.
+    Para que funcione necesitas estar en un plan de pago (Hacker o superior)
+    y tener api.telegram.org en tu whitelist de dominios, o usar un proxy.
+    Si ves "urlopen error [Errno 111] Connection refused" o
+    "urlopen error timed out", es este bloqueo — no hay bug en el código.
+    """
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    params = urllib.parse.urlencode({
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": mensaje,
-        "parse_mode": "HTML"
-    })
+        slog("warning", "Telegram no configurado: falta TELEGRAM_TOKEN o TELEGRAM_CHAT_ID")
+        return False
+
+    url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    body = json.dumps({
+        "chat_id":    TELEGRAM_CHAT_ID,
+        "text":       mensaje,
+        "parse_mode": "HTML",
+    }).encode("utf-8")
+
     for intento in range(3):
         try:
-            req = urllib.request.Request(url + "?" + params)
-            urllib.request.urlopen(req, timeout=15)
-            return  # éxito, salir
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    "Content-Type":   "application/json",
+                    "Content-Length": str(len(body)),
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                status = resp.getcode()
+                if status == 200:
+                    slog("info", "Telegram OK (intento {})", str(intento + 1))
+                    return True
+                # 200 es el único éxito; otro código es error de la API
+                resp_body = resp.read(500).decode("utf-8", errors="ignore")
+                slog("warning", "Telegram HTTP {}: {}", str(status), resp_body)
+        except urllib.error.HTTPError as e:
+            err_body = e.read(500).decode("utf-8", errors="ignore") if e.fp else ""
+            slog("warning", "Telegram HTTPError {}/{} intento {}: {} | {}",
+                 str(e.code), str(e.reason), str(intento + 1), str(e), err_body)
+        except urllib.error.URLError as e:
+            # Aquí cae el bloqueo de PythonAnywhere (Connection refused / timed out)
+            slog("warning", "Telegram URLError intento {}: {} — "
+                 "Verifica que api.telegram.org esté en la whitelist de PythonAnywhere",
+                 str(intento + 1), str(e.reason))
         except Exception as e:
-            slog("warning", "Telegram intento {}/3: {}", str(intento + 1), str(e))
-            if intento < 2:
-                time.sleep(10)
+            slog("warning", "Telegram error inesperado intento {}: {}", str(intento + 1), str(e))
+
+        if intento < 2:
+            time.sleep(5)
+
     slog("error", "Telegram falló después de 3 intentos")
+    return False
 
 # ─────────────────────────────────────────
 def get_rutas_cliente(nombre_cliente):
